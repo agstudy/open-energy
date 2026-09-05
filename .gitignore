@@ -1,0 +1,32 @@
+# Build artifacts
+/target
+**/target
+
+# Rust
+# Cargo.lock: commit if the workspace produces a binary (energy-cli),
+# since binaries want reproducible builds. If ALL crates are libraries
+# only, it's conventional to ignore Cargo.lock instead — uncomment below.
+# Cargo.lock
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.local
+*.pem
+*.key
+
+# Logs
+*.log
+
+# Test artifacts, if you generate any locally
+/coverage/
+*.profraw
