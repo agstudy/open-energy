@@ -7,7 +7,7 @@ use meter_parser::Nem12Parser;
 
 #[derive(Parser)]
 #[command(name = "Energy Tool")]
-#[command(about = "A multi-tool for energy data parsing and battery simulation", long_about = None)]
+#[command(about = "A multi-tool for energy", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -31,8 +31,7 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
 
-    // The match statement is the "source of truth" for your commands.
-    // As you add new crates/commands, you just add a new branch here.
+
     match cli.command {
         Commands::Parse { file, verbose } => {
             handle_parse(file, verbose);
