@@ -2,6 +2,7 @@
 name = "meter-parser"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 chrono = { workspace = true }
@@ -9,3 +10,4 @@ chrono-tz = { workspace = true }
 csv = { workspace = true }
 rust_decimal = { workspace = true }
 rust_decimal_macros = { workspace = true }
+

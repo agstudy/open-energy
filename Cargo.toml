@@ -10,25 +10,10 @@ resolver = "2"
 [workspace.dependencies]
 csv = "1.4.0"
 rust_decimal = "1.40.0"
-serde = { version = "1.0.228", features = ["derive"] }
-
-strum = "0.27.2"
-strum_macros = "0.28.0"
 clap = { version = "4.5.59", features = ["derive"] }
-
 chrono = "0.4.43"
 chrono-tz = "0.10.4"
 rust_decimal_macros = "1.40.0"
-tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
-sea-orm = { version = "2.0.0-rc.34", features = [ 
-    "sqlx-postgres", 
-    "runtime-tokio-rustls", 
-    "macros",
-    "with-chrono",
-    "with-json",   # Required for Axum JSON integration
-    "debug-print" ,  # Prints SQL to terminal (great for debugging)
-    "with-uuid","schema-sync", "entity-registry"
-] }
 
 
 
