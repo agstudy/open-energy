@@ -10,3 +10,5 @@ clap = { version = "4.5.59", features = ["derive"] }
 chrono = "0.4.43"
 chrono-tz = "0.10.4"
 rust_decimal_macros = "1.40.0"
+bitflags = "2.13.2"
+
