@@ -1,10 +1,6 @@
 [workspace]
-members = [
-    "crates/energy-cli",
-    "crates/meter-parser",
-  ]
+members = ["crates/bill-pricer", "crates/energy-cli", "crates/meter-parser"]
 resolver = "2"
-
 
 
 [workspace.dependencies]
@@ -14,7 +10,3 @@ clap = { version = "4.5.59", features = ["derive"] }
 chrono = "0.4.43"
 chrono-tz = "0.10.4"
 rust_decimal_macros = "1.40.0"
-
-
-
-
