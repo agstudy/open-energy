@@ -89,6 +89,7 @@ name = "bill-pricer"
 version = "0.1.0"
 dependencies = [
  "bitflags",
+ "chrono",
  "rust_decimal",
  "rust_decimal_macros",
 ]

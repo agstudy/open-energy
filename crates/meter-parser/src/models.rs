@@ -14,7 +14,7 @@ pub enum ParserError {
     IoError(std::io::Error),
     InvalidNumber(String),
     InvalidReadingQuality(String),
-    InvalidUnitOfMeasure(String)
+    InvalidUnitOfMeasure(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]

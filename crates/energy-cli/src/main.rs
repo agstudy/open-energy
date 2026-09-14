@@ -24,19 +24,16 @@ enum Commands {
         /// Show detailed interval data
         #[arg(short, long)]
         verbose: bool,
-    }
+    },
 }
-
 
 fn main() {
     let cli = Cli::parse();
-
 
     match cli.command {
         Commands::Parse { file, verbose } => {
             handle_parse(file, verbose);
         }
-
     }
 }
 
@@ -62,4 +59,3 @@ fn handle_parse(path: PathBuf, verbose: bool) {
         Err(e) => eprintln!("Parsing failed: {:?}", e),
     }
 }
-

@@ -1,9 +1,28 @@
-use rust_decimal::Decimal;
-use bitflags::bitflags;
+use std::cmp::Ordering;
 
+use bitflags::bitflags;
+use rust_decimal::Decimal;
+
+#[derive(Debug)]
 pub struct HourMinute {
-    pub hour: u8,
-    pub minute: u8,
+    pub hour: u32,
+    pub minute: u32,
+}
+
+impl PartialEq for HourMinute {
+    fn eq(&self, other: &Self) -> bool {
+        self.hour == other.hour && self.minute == other.minute
+    }
+}
+
+impl PartialOrd for HourMinute {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(
+            self.hour
+                .cmp(&other.hour)
+                .then_with(|| self.minute.cmp(&other.minute)),
+        )
+    }
 }
 
 bitflags! {
@@ -23,7 +42,7 @@ bitflags! {
 pub struct TimeBand {
     pub start: HourMinute,
     pub end: HourMinute,
-    pub days_of_week: Option<Vec<WeekDays>>
+    pub days_of_week: Option<WeekDays>,
 }
 
 pub struct RateBlock {
@@ -47,16 +66,27 @@ pub struct Discount {
     pub amount: Decimal,
 }
 
-pub struct RateSchedule {
+pub struct RatePeriod {
     pub rates: Vec<RateBlock>,
-    pub times: Vec<TimeBand>,
+    pub time_band: Option<TimeBand>,
 }
 
+impl RatePeriod {
+
+    /// Returns true if this period covers `at`. `time_band: None` means
+    /// "always applies" (used for flat/non TOU).
+    /// Day-of-week matching not yet implemented.
+    pub fn applies_at(&self, at: &HourMinute) -> bool {
+        match &self.time_band {
+            None => true,
+            Some(tb) => tb.start <= *at && *at <= tb.end,
+        }
+    }
+}
 
 pub struct Tariff {
-    pub usage_rate: Vec<RateSchedule>,
-    pub export_rate: Option<Vec<RateSchedule>>,
+    pub import_tariff: Vec<RatePeriod>,
+    pub export_tariff: Option<Vec<RatePeriod>>,
     pub discount: Option<Vec<Discount>>,
     pub supply_rate: Decimal,
 }
-

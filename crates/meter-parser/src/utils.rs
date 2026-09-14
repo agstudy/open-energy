@@ -1,6 +1,6 @@
+use crate::models::ParserError;
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use chrono_tz::Australia::Brisbane; // AEST
-use crate::models::{ParserError};
 
 fn parse_fuzzy_date(date_str: &str) -> Result<NaiveDate, ParserError> {
     // Try Standard NEM12 first
@@ -19,7 +19,6 @@ fn parse_fuzzy_date(date_str: &str) -> Result<NaiveDate, ParserError> {
     Err(ParserError::InvalidTimestamp)
 }
 
-
 pub fn parse_date(date_str: &str) -> Result<DateTime<Utc>, ParserError> {
     let naive_date = parse_fuzzy_date(date_str)?;
 
@@ -36,5 +35,3 @@ pub fn parse_date(date_str: &str) -> Result<DateTime<Utc>, ParserError> {
 
     Ok(utc_start)
 }
-
-
