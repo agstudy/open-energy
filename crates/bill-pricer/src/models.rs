@@ -72,7 +72,6 @@ pub struct RatePeriod {
 }
 
 impl RatePeriod {
-
     /// Returns true if this period covers `at`. `time_band: None` means
     /// "always applies" (used for flat/non TOU).
     /// Day-of-week matching not yet implemented.

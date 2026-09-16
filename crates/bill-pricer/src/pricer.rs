@@ -14,7 +14,9 @@ pub struct MeterMeasure {
 pub enum PricingError {
     TariffOverlapp,
     NoData,
-    CorruptedData,
+    NoRates,
+    NoTariff,
+    CorruptedData, // TODO: not yet used
 }
 
 impl Tariff {
@@ -33,11 +35,11 @@ impl Tariff {
             .collect();
 
         match matches.as_slice() {
-            [] => Err(PricingError::NoData),
+            [] => Err(PricingError::NoTariff),
             [period] => period
                 .rates
                 .first()
-                .ok_or(PricingError::NoData)
+                .ok_or(PricingError::NoRates)
                 .map(|b| b.rate),
             _ => Err(PricingError::TariffOverlapp),
         }
@@ -93,5 +95,71 @@ mod tests {
         };
 
         assert_eq!(price(&flat_tariff, &smart_meter).unwrap(), dec!(3));
+    }
+
+    #[test]
+    fn test_empty_rates_on_matched_period() {
+        let tariff = Tariff {
+            import_tariff: vec![RatePeriod {
+                rates: vec![],
+                time_band: None,
+            }],
+            export_tariff: None,
+            discount: None,
+            supply_rate: dec!(1.0),
+        };
+        let smart_meter = vec![MeterMeasure {
+            utc_start: Utc::now(),
+            import: dec!(10.0),
+            export: None,
+        }];
+
+        assert!(matches!(
+            price(&tariff, &smart_meter),
+            Err(PricingError::NoRates)
+        ));
+    }
+
+    #[test]
+    fn test_empty_tariff() {
+        let smart_meter = vec![MeterMeasure {
+            utc_start: Utc::now(),
+            import: dec!(10.0),
+            export: None,
+        }];
+
+        let tariff = Tariff {
+            import_tariff: vec![],
+            export_tariff: None,
+            discount: None,
+            supply_rate: dec!(1.0),
+        };
+
+        assert!(matches!(
+            price(&tariff, &smart_meter),
+            Err(PricingError::NoTariff)
+        ));
+    }
+
+    #[test]
+    fn test_empty_smart_meter() {
+        let tariff = Tariff {
+            import_tariff: vec![RatePeriod {
+                rates: vec![RateBlock {
+                    rate: dec!(0.2),
+                    lower_band: None,
+                }],
+                time_band: None,
+            }],
+            export_tariff: None,
+            discount: None,
+            supply_rate: dec!(1.0),
+        };
+        let smart_meter: Vec<MeterMeasure> = vec![];
+
+        assert!(matches!(
+            price(&tariff, &smart_meter),
+            Err(PricingError::NoData)
+        ));
     }
 }
