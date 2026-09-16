@@ -1,0 +1,11 @@
+#!/bin/sh
+# Blocks direct commits to main. Bypass with --no-verify if you really
+# need to (e.g. fixing the hook itself), but that should be rare.
+
+branch=$(git rev-parse --abbrev-ref HEAD)
+
+if [ "$branch" = "main" ]; then
+    echo "Direct commits to 'main' are not allowed."
+    echo "Create a branch first: git checkout -b issue-N-description"
+    exit 1
+fi
