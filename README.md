@@ -52,6 +52,13 @@ KwhImport: 8614.51300
 
 ## Development
 
+After cloning, enable the repo's git hooks (blocks direct commits to `main`):
+
+   
+```bash
+ git config core.hooksPath scripts/hooks
+```
+
 Run tests across the workspace:
 
 ```bash
