@@ -90,6 +90,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "chrono",
+ "meter-parser",
  "rust_decimal",
  "rust_decimal_macros",
 ]

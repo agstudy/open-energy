@@ -1,7 +1,7 @@
 use std::cmp::max;
 
-use crate::models::{HourMinute, RatePeriod, Tariff};
-use chrono::{DateTime, Datelike, Timelike, Utc};
+use crate::models::{HourMinute, InvalidHourMinute, RateBlock, RatePeriod, Tariff, TimeBand};
+use chrono::{DateTime, Timelike, Utc};
 use rust_decimal::Decimal;
 
 pub struct MeterMeasure {
@@ -16,17 +16,70 @@ pub enum PricingError {
     NoData,
     NoRates,
     NoTariff,
+    InvalidHourMinute(InvalidHourMinute),
     CorruptedData, // TODO: not yet used
 }
 
-impl Tariff {
-    pub fn rate_at(&self, at: DateTime<Utc>) -> Result<Decimal, PricingError> {
-        let at_hm = HourMinute {
-            minute: at.minute(),
-            hour: at.hour(),
-        };
+pub struct Window {
+    pub rate: Decimal,
+    pub start: HourMinute,
+}
 
-        let week_day = at.weekday();
+impl Tariff {
+    pub fn flat(flat_rate: Decimal, supply_rate: Decimal) -> Tariff {
+        Tariff {
+            import_tariff: vec![RatePeriod {
+                rates: vec![RateBlock {
+                    rate: flat_rate,
+                    lower_band: None,
+                }],
+                time_band: None,
+            }],
+            export_tariff: None,
+            discount: None,
+            supply_rate,
+        }
+    }
+
+    fn periods_for_window(rate: Decimal, start: HourMinute, end: HourMinute) -> Vec<RatePeriod> {
+        start
+            .split_midnight(end)
+            .into_iter()
+            .map(|(s, e)| {
+                RatePeriod::new(
+                    rate,
+                    Some(TimeBand {
+                        start: s,
+                        end: e,
+                        days_of_week: None,
+                    }),
+                )
+            })
+            .collect()
+    }
+
+    pub fn time_of_use(peak: Window, off_peak: Window, supply_rate: Decimal) -> Tariff {
+        let import_tariff =
+            Tariff::periods_for_window(off_peak.rate, off_peak.start, peak.start.prev())
+                .into_iter()
+                .chain(Tariff::periods_for_window(
+                    peak.rate,
+                    peak.start,
+                    off_peak.start.prev(),
+                ))
+                .collect();
+
+        Tariff {
+            import_tariff,
+            export_tariff: None,
+            discount: None,
+            supply_rate,
+        }
+    }
+
+    pub fn rate_at(&self, at: DateTime<Utc>) -> Result<Decimal, PricingError> {
+        let at_hm =
+            HourMinute::new(at.hour(), at.minute()).map_err(PricingError::InvalidHourMinute)?;
 
         let matches: Vec<&RatePeriod> = self
             .import_tariff
@@ -68,10 +121,43 @@ pub fn price(tariff: &Tariff, smart_meter: &[MeterMeasure]) -> Result<Decimal, P
 #[cfg(test)]
 mod tests {
 
-    use crate::models::{RateBlock, RatePeriod};
+    use crate::models::RatePeriod;
 
     use super::*;
     use rust_decimal_macros::dec;
+
+    use chrono::TimeZone;
+
+    #[test]
+    fn test_time_of_use_across_midnight() {
+        let tariff = Tariff::time_of_use(
+            Window {
+                rate: dec!(0.4),
+                start: HourMinute::new(16, 0).unwrap(),
+            }, // peak: 16:00–20:59
+            Window {
+                rate: dec!(0.2),
+                start: HourMinute::new(21, 0).unwrap(),
+            }, // off-peak: 21:00–15:59
+            dec!(1.0),
+        );
+
+        let smart_meter = vec![
+            MeterMeasure {
+                utc_start: Utc.with_ymd_and_hms(2026, 1, 1, 17, 0, 0).unwrap(), // peak
+                import: dec!(10.0),
+                export: None,
+            },
+            MeterMeasure {
+                utc_start: Utc.with_ymd_and_hms(2026, 1, 1, 23, 0, 0).unwrap(), // off-peak
+                import: dec!(10.0),
+                export: None,
+            },
+        ];
+
+        // 10 * 0.4 (peak) + 10 * 0.2 (off-peak) + 1.0 (supply, 1 day) = 7.0
+        assert_eq!(price(&tariff, &smart_meter).unwrap(), dec!(7.0));
+    }
 
     #[test]
     fn test_flat() {
@@ -81,18 +167,7 @@ mod tests {
             export: None,
         }];
 
-        let flat_tariff = Tariff {
-            import_tariff: vec![RatePeriod {
-                rates: vec![RateBlock {
-                    rate: dec!(0.2),
-                    lower_band: None,
-                }],
-                time_band: None,
-            }],
-            export_tariff: None,
-            discount: None,
-            supply_rate: dec!(1.0),
-        };
+        let flat_tariff = Tariff::flat(dec!(0.2), dec!(1.0));
 
         assert_eq!(price(&flat_tariff, &smart_meter).unwrap(), dec!(3));
     }
@@ -143,18 +218,8 @@ mod tests {
 
     #[test]
     fn test_empty_smart_meter() {
-        let tariff = Tariff {
-            import_tariff: vec![RatePeriod {
-                rates: vec![RateBlock {
-                    rate: dec!(0.2),
-                    lower_band: None,
-                }],
-                time_band: None,
-            }],
-            export_tariff: None,
-            discount: None,
-            supply_rate: dec!(1.0),
-        };
+        let tariff = Tariff::flat(dec!(0.2), dec!(1.0));
+
         let smart_meter: Vec<MeterMeasure> = vec![];
 
         assert!(matches!(
