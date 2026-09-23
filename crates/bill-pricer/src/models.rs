@@ -110,8 +110,7 @@ impl RatePeriod {
         }
     }
 
-
-    pub fn new (rate: Decimal, time_band: Option<TimeBand>) -> Self {
+    pub fn new(rate: Decimal, time_band: Option<TimeBand>) -> Self {
         RatePeriod {
             rates: vec![RateBlock {
                 rate,

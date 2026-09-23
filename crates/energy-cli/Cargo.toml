@@ -7,4 +7,4 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 clap = { workspace = true }
 meter-parser = { path = "../meter-parser" }
-
+bill-pricer = {path ="../bill-pricer"}
