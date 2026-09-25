@@ -12,7 +12,7 @@ use crate::utils::parse_date;
 const MINUTES_PER_DAY: u32 = 24 * 60;
 
 pub struct Nem12Parser {
-    pub current_meter: Option<MeterState>,
+    pub meter_state: Option<MeterState>,
     pub results: Vec<Nem12_300>,
 }
 
@@ -58,10 +58,48 @@ fn parse_200_to_state(row: &csv::StringRecord) -> Result<MeterState, ParserError
     })
 }
 
+fn transform_300(state: &MeterState, record: &csv::StringRecord) -> Result<Nem12_300, ParserError> {
+    let date_str = record.get(1).ok_or(ParserError::InvalidFormat)?;
+
+    let utc_start = parse_date(date_str)?;
+
+    // 1. Calculate how many values we need
+    let expected_count = (MINUTES_PER_DAY / state.interval_minutes) as usize;
+
+    // 2. Identify the Quality code index if it exists in the "Standard" position
+    // record.len() >= expected_count + 7 implies index (len - 5) is safe.
+    let quality_code = record
+        .get(record.len().saturating_sub(5))
+        .filter(|_| record.len() >= expected_count + 7)
+        .unwrap_or("A");
+
+    let quality = ReadingQuality::from_str(quality_code)?;
+    let values_to_take = expected_count;
+
+    let factor = state.uom.scaling_factor();
+    let values: Vec<Decimal> = record
+        .iter()
+        .skip(2)
+        .take(values_to_take)
+        .map(|v| {
+            v.parse::<Decimal>()
+                .map_err(|_| ParserError::InvalidNumber(v.to_string()))
+                .map(|d| d * factor)
+        })
+        .collect::<Result<Vec<Decimal>, ParserError>>()?;
+    let meter_type = state.meter_type;
+    Ok(Nem12_300 {
+        utc_start,
+        measures: values,
+        quality,
+        meter_type,
+    })
+}
+
 impl Nem12Parser {
     pub fn new() -> Self {
         Nem12Parser {
-            current_meter: None,
+            meter_state: None,
             results: vec![],
         }
     }
@@ -69,13 +107,14 @@ impl Nem12Parser {
     pub fn handle_record(&mut self, record: &csv::StringRecord) -> Result<(), ParserError> {
         match record.get(0) {
             Some("200") => {
-                self.current_meter = Some(parse_200_to_state(record)?);
+                self.meter_state = Some(parse_200_to_state(record)?);
                 Ok(())
             }
             Some("300") => {
-                let data = self.transform_300(record)?;
-                self.results.push(data);
+                let state = self.meter_state.as_ref().ok_or(ParserError::NoMeterData)?;
 
+                let data = transform_300(state, record)?;
+                self.results.push(data);
                 Ok(())
             }
 
@@ -94,55 +133,14 @@ impl Nem12Parser {
         for (index, result) in rdr.records().enumerate() {
             let record = result.map_err(|_| ParserError::InvalidFormat)?;
             if let Err(e) = self.handle_record(&record) {
+                if record.get(0) == Some("200") {
+                    return Err(e); // fatal — no meter context, further 300s are meaningless
+                }
                 eprintln!("Row {}: Parsing Error: {:?}", index + 1, e);
                 // We do NOT return Err here, so the loop continues
             }
         }
         Ok(())
-    }
-
-    fn transform_300(&mut self, record: &csv::StringRecord) -> Result<Nem12_300, ParserError> {
-        // Get the current meter state, error if missing
-        let state = self
-            .current_meter
-            .as_ref()
-            .ok_or(ParserError::NoMeterData)?;
-
-        let date_str = record.get(1).ok_or(ParserError::InvalidFormat)?;
-
-        let utc_start = parse_date(date_str)?;
-
-        // 1. Calculate how many values we need
-        let expected_count = (MINUTES_PER_DAY / state.interval_minutes) as usize;
-
-        // 2. Identify the Quality code index if it exists in the "Standard" position
-        // record.len() >= expected_count + 7 implies index (len - 5) is safe.
-        let quality_code = record
-            .get(record.len().saturating_sub(5))
-            .filter(|_| record.len() >= expected_count + 7)
-            .unwrap_or("A");
-
-        let quality = ReadingQuality::from_str(quality_code)?;
-        let values_to_take = expected_count;
-
-        let factor = state.uom.scaling_factor();
-        let values: Vec<Decimal> = record
-            .iter()
-            .skip(2)
-            .take(values_to_take)
-            .map(|v| {
-                v.parse::<Decimal>()
-                    .map_err(|_| ParserError::InvalidNumber(v.to_string()))
-                    .map(|d| d * factor)
-            })
-            .collect::<Result<Vec<Decimal>, ParserError>>()?;
-        let meter_type = state.meter_type;
-        Ok(Nem12_300 {
-            utc_start,
-            measures: values,
-            quality,
-            meter_type,
-        })
     }
 
     pub fn summary(&self) -> HashMap<SmartMeterType, Decimal> {
@@ -179,6 +177,18 @@ mod tests {
         assert_eq!(state.uom, UnitOfMeasure::KiloWattHour);
         assert_eq!(state.interval_minutes, 30);
     }
+
+    #[test]
+    fn test_bad_200_parsing() {
+        // Your exact example
+        let raw_line = "200,6203230232,E1E2,E1,E1,,A7696039,30,";
+        let record = csv::StringRecord::from(raw_line.split(',').collect::<Vec<_>>());
+
+        let result = parse_200_to_state(&record);
+        println!("{:?}", result);
+
+        assert!(matches!(result, Err(ParserError::InvalidUnitOfMeasure(_))));
+    }
     #[test]
     fn test_streaming_from_memory() {
         let data = "200,6203230232,E1E2,E1,E1,,A7696039,KWH,30,
@@ -201,7 +211,7 @@ mod tests {
 
         assert_eq!(parser.results.len(), 1);
         // Use if let to access the inner fields safely
-        if let Some(meter) = &parser.current_meter {
+        if let Some(meter) = &parser.meter_state {
             assert_eq!(meter.uom, UnitOfMeasure::KiloWattHour);
             assert_eq!(meter.interval_minutes, 60);
             assert_eq!(meter.nmi, "540423685");
