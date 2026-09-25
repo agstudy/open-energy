@@ -1,7 +1,7 @@
 use std::cmp::max;
 
-use crate::models::{HourMinute, RatePeriod, Tariff};
-use chrono::{DateTime, Datelike, Timelike, Utc};
+use crate::{models::Tariff, tariff::PricingError};
+use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 
 pub struct MeterMeasure {
@@ -10,41 +10,6 @@ pub struct MeterMeasure {
     pub export: Option<Decimal>,
 }
 
-#[derive(Debug)]
-pub enum PricingError {
-    TariffOverlapp,
-    NoData,
-    NoRates,
-    NoTariff,
-    CorruptedData, // TODO: not yet used
-}
-
-impl Tariff {
-    pub fn rate_at(&self, at: DateTime<Utc>) -> Result<Decimal, PricingError> {
-        let at_hm = HourMinute {
-            minute: at.minute(),
-            hour: at.hour(),
-        };
-
-        let week_day = at.weekday();
-
-        let matches: Vec<&RatePeriod> = self
-            .import_tariff
-            .iter()
-            .filter(|p| p.applies_at(&at_hm))
-            .collect();
-
-        match matches.as_slice() {
-            [] => Err(PricingError::NoTariff),
-            [period] => period
-                .rates
-                .first()
-                .ok_or(PricingError::NoRates)
-                .map(|b| b.rate),
-            _ => Err(PricingError::TariffOverlapp),
-        }
-    }
-}
 pub fn price(tariff: &Tariff, smart_meter: &[MeterMeasure]) -> Result<Decimal, PricingError> {
     if smart_meter.is_empty() {
         return Err(PricingError::NoData);
@@ -68,10 +33,46 @@ pub fn price(tariff: &Tariff, smart_meter: &[MeterMeasure]) -> Result<Decimal, P
 #[cfg(test)]
 mod tests {
 
-    use crate::models::{RateBlock, RatePeriod};
+    use crate::{
+        models::{HourMinute, RatePeriod},
+        tariff::{TariffFactory, Window},
+    };
 
     use super::*;
     use rust_decimal_macros::dec;
+
+    use chrono::TimeZone;
+
+    #[test]
+    fn test_time_of_use_across_midnight() {
+        let tariff = TariffFactory::time_of_use(
+            Window {
+                rate: dec!(0.4),
+                start: HourMinute::new(16, 0).unwrap(),
+            }, // peak: 16:00–20:59
+            Window {
+                rate: dec!(0.2),
+                start: HourMinute::new(21, 0).unwrap(),
+            }, // off-peak: 21:00–15:59
+            dec!(1.0),
+        );
+
+        let smart_meter = vec![
+            MeterMeasure {
+                utc_start: Utc.with_ymd_and_hms(2026, 1, 1, 17, 0, 0).unwrap(), // peak
+                import: dec!(10.0),
+                export: None,
+            },
+            MeterMeasure {
+                utc_start: Utc.with_ymd_and_hms(2026, 1, 1, 23, 0, 0).unwrap(), // off-peak
+                import: dec!(10.0),
+                export: None,
+            },
+        ];
+
+        // 10 * 0.4 (peak) + 10 * 0.2 (off-peak) + 1.0 (supply, 1 day) = 7.0
+        assert_eq!(price(&tariff, &smart_meter).unwrap(), dec!(7.0));
+    }
 
     #[test]
     fn test_flat() {
@@ -81,18 +82,7 @@ mod tests {
             export: None,
         }];
 
-        let flat_tariff = Tariff {
-            import_tariff: vec![RatePeriod {
-                rates: vec![RateBlock {
-                    rate: dec!(0.2),
-                    lower_band: None,
-                }],
-                time_band: None,
-            }],
-            export_tariff: None,
-            discount: None,
-            supply_rate: dec!(1.0),
-        };
+        let flat_tariff = TariffFactory::flat(dec!(0.2), dec!(1.0));
 
         assert_eq!(price(&flat_tariff, &smart_meter).unwrap(), dec!(3));
     }
@@ -143,18 +133,8 @@ mod tests {
 
     #[test]
     fn test_empty_smart_meter() {
-        let tariff = Tariff {
-            import_tariff: vec![RatePeriod {
-                rates: vec![RateBlock {
-                    rate: dec!(0.2),
-                    lower_band: None,
-                }],
-                time_band: None,
-            }],
-            export_tariff: None,
-            discount: None,
-            supply_rate: dec!(1.0),
-        };
+        let tariff = TariffFactory::flat(dec!(0.2), dec!(1.0));
+
         let smart_meter: Vec<MeterMeasure> = vec![];
 
         assert!(matches!(

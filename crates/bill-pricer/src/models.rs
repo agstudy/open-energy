@@ -1,27 +1,55 @@
-use std::cmp::Ordering;
-
 use bitflags::bitflags;
 use rust_decimal::Decimal;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct HourMinute {
-    pub hour: u32,
-    pub minute: u32,
+    hour: u32,
+    minute: u32,
 }
 
-impl PartialEq for HourMinute {
-    fn eq(&self, other: &Self) -> bool {
-        self.hour == other.hour && self.minute == other.minute
+#[derive(Debug)]
+pub struct InvalidHourMinute(u32, u32);
+
+impl HourMinute {
+    pub const MAX_MINUTE: u32 = 59;
+    pub const MAX_HOUR: u32 = 23;
+
+    pub fn new(hour: u32, minute: u32) -> Result<Self, InvalidHourMinute> {
+        if (0..=59).contains(&minute) && (0..=23).contains(&hour) {
+            Ok(HourMinute { hour, minute })
+        } else {
+            Err(InvalidHourMinute(hour, minute))
+        }
     }
-}
+    pub fn prev(self) -> HourMinute {
+        if self.minute == 0 {
+            HourMinute {
+                hour: (self.hour + 23) % 24,
+                minute: 59,
+            }
+        } else {
+            HourMinute {
+                hour: self.hour,
+                minute: self.minute - 1,
+            }
+        }
+    }
 
-impl PartialOrd for HourMinute {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(
-            self.hour
-                .cmp(&other.hour)
-                .then_with(|| self.minute.cmp(&other.minute)),
-        )
+    pub fn split_midnight(self, end: HourMinute) -> Vec<(HourMinute, HourMinute)> {
+        if self >= end {
+            vec![
+                (
+                    self,
+                    Self {
+                        hour: Self::MAX_HOUR,
+                        minute: Self::MAX_MINUTE,
+                    },
+                ),
+                (Self { hour: 0, minute: 0 }, end),
+            ]
+        } else {
+            vec![(self, end)]
+        }
     }
 }
 
@@ -81,6 +109,16 @@ impl RatePeriod {
             Some(tb) => tb.start <= *at && *at <= tb.end,
         }
     }
+
+    pub fn new(rate: Decimal, time_band: Option<TimeBand>) -> Self {
+        RatePeriod {
+            rates: vec![RateBlock {
+                rate,
+                lower_band: None,
+            }],
+            time_band,
+        }
+    }
 }
 
 pub struct Tariff {
@@ -88,4 +126,36 @@ pub struct Tariff {
     pub export_tariff: Option<Vec<RatePeriod>>,
     pub discount: Option<Vec<Discount>>,
     pub supply_rate: Decimal,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_prev_0hour_minute() {
+        let hm = HourMinute {
+            hour: 0,
+            minute: 11,
+        };
+        assert_eq!(
+            hm.prev(),
+            HourMinute {
+                hour: 0,
+                minute: 10
+            }
+        );
+    }
+
+    #[test]
+    fn test_prev_hour_0minute() {
+        let hm = HourMinute { hour: 5, minute: 0 };
+        assert_eq!(
+            hm.prev(),
+            HourMinute {
+                hour: 4,
+                minute: 59
+            }
+        );
+    }
 }
