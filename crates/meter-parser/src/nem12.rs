@@ -1,3 +1,4 @@
+use chrono::{DateTime, Duration, Utc};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::collections::HashMap;
@@ -122,8 +123,6 @@ impl Nem12Parser {
         }
     }
 
-    /// Streams the file line-by-line.
-    /// This is where the IO concern lives.
     pub fn parse_stream<R: std::io::Read>(&mut self, reader: R) -> Result<(), ParserError> {
         let mut rdr = csv::ReaderBuilder::new()
             .has_headers(false)
@@ -145,14 +144,38 @@ impl Nem12Parser {
 
     pub fn summary(&self) -> HashMap<SmartMeterType, Decimal> {
         self.results.iter().fold(HashMap::new(), |mut acc, row| {
-            // .iter().sum() works on Vec<Decimal> thanks to rust_decimal
             let row_total: Decimal = row.measures.iter().sum();
 
-            // Update the running total for this specific meter type
             *acc.entry(row.meter_type).or_insert(dec!(0.0)) += row_total;
 
             acc
         })
+    }
+
+    fn ts_measures(&self, serie_type: SmartMeterType) -> Vec<(DateTime<Utc>, Decimal)> {
+        let Some(meter) = &self.meter_state else {
+            return vec![];
+        };
+        let frequency = meter.interval_minutes;
+        self.results
+            .iter()
+            .filter(|x| x.meter_type == serie_type)
+            .flat_map(|x| {
+                x.measures.iter().enumerate().map(|(i, &measure)| {
+                    (
+                        x.utc_start + Duration::minutes(i as i64 * frequency as i64),
+                        measure,
+                    )
+                })
+            })
+            .collect()
+    }
+
+    pub fn import(&self) -> Vec<(DateTime<Utc>, Decimal)> {
+        self.ts_measures(SmartMeterType::KwhImport)
+    }
+    pub fn export(&self) -> Vec<(DateTime<Utc>, Decimal)> {
+        self.ts_measures(SmartMeterType::KwhExport)
     }
 }
 
