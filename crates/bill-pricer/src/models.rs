@@ -1,5 +1,6 @@
 use bitflags::bitflags;
 use rust_decimal::Decimal;
+use std::str::FromStr;
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct HourMinute {
@@ -9,6 +10,45 @@ pub struct HourMinute {
 
 #[derive(Debug)]
 pub struct InvalidHourMinute(u32, u32);
+
+impl std::fmt::Display for InvalidHourMinute {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "invalid time {:02}:{:02} (hour must be 0-23, minute 0-59)",
+            self.0, self.1
+        )
+    }
+}
+
+pub struct InvalidStrHourMinute(String);
+
+impl std::fmt::Display for InvalidStrHourMinute {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "invalid time {} (hour must be 0-23, minute 0-59)",
+            self.0
+        )
+    }
+}
+
+impl TryFrom<&str> for HourMinute {
+    type Error = InvalidStrHourMinute;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let parts: Vec<&str> = value.split(":").collect();
+        if parts.len() != 2 {
+            return Err(InvalidStrHourMinute(String::from(value)));
+        }
+        match (u32::from_str(parts[0]), u32::from_str(parts[1])) {
+            (Ok(hour), Ok(minute)) => {
+                HourMinute::new(hour, minute).map_err(|_| InvalidStrHourMinute(String::from(value)))
+            }
+            _ => Err(InvalidStrHourMinute(String::from(value))),
+        }
+    }
+}
 
 impl HourMinute {
     pub const MAX_MINUTE: u32 = 59;

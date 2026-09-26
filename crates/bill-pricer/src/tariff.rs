@@ -12,6 +12,7 @@ pub enum PricingError {
     CorruptedData, // TODO: not yet used
 }
 
+#[derive(Debug, Clone)]
 pub struct Window {
     pub rate: Decimal,
     pub start: HourMinute,
