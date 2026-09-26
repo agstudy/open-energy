@@ -8,6 +8,5 @@ rust_decimal = { workspace = true }
 rust_decimal_macros = { workspace = true }
 bitflags = {workspace = true}
 chrono = { workspace = true }
-meter-parser = { path = "../meter-parser" }
 domain = { path = "../../domain" }
 

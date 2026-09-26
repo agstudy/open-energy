@@ -1,10 +1,9 @@
-use std::{cmp::max};
+use std::cmp::max;
 
 use crate::{models::Tariff, tariff::PricingError};
 use domain::meter::MeterMeasure;
+
 use rust_decimal::Decimal;
-
-
 
 pub fn price(tariff: &Tariff, smart_meter: &[MeterMeasure]) -> Result<Decimal, PricingError> {
     if smart_meter.is_empty() {
@@ -25,7 +24,6 @@ pub fn price(tariff: &Tariff, smart_meter: &[MeterMeasure]) -> Result<Decimal, P
     })?;
     Ok(import + supply_charge)
 }
-
 
 #[cfg(test)]
 mod tests {

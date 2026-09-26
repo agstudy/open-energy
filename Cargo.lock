@@ -91,7 +91,6 @@ dependencies = [
  "bitflags",
  "chrono",
  "domain",
- "meter-parser",
  "rust_decimal",
  "rust_decimal_macros",
 ]
@@ -304,7 +303,10 @@ version = "0.1.0"
 dependencies = [
  "bill-pricer",
  "clap",
+ "domain",
  "meter-parser",
+ "rust_decimal",
+ "rust_decimal_macros",
 ]
 
 [[package]]

@@ -22,7 +22,7 @@ impl MeterMeasure {
 /// treated as zero-import (e.g. solar export with no simultaneous grid draw).
 /// Import-only intervals (no export reading) are the common case pre-solar-install
 /// and are left with `export: None`.
-pub fn merger_import_export(
+pub fn merge_import_export(
     import: &[(DateTime<Utc>, Decimal)],
     export: &[(DateTime<Utc>, Decimal)],
 ) -> Vec<MeterMeasure> {
