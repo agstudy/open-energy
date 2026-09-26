@@ -10,6 +10,12 @@ pub struct HourMinute {
 #[derive(Debug)]
 pub struct InvalidHourMinute(u32, u32);
 
+impl std::fmt::Display for InvalidHourMinute {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid time {:02}:{:02} (hour must be 0-23, minute 0-59)", self.0, self.1)
+    }
+}
+
 impl HourMinute {
     pub const MAX_MINUTE: u32 = 59;
     pub const MAX_HOUR: u32 = 23;

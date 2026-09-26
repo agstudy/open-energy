@@ -1,14 +1,10 @@
-use std::cmp::max;
+use std::{cmp::max};
 
 use crate::{models::Tariff, tariff::PricingError};
-use chrono::{DateTime, Utc};
+use domain::meter::MeterMeasure;
 use rust_decimal::Decimal;
 
-pub struct MeterMeasure {
-    pub utc_start: DateTime<Utc>,
-    pub import: Decimal,
-    pub export: Option<Decimal>,
-}
+
 
 pub fn price(tariff: &Tariff, smart_meter: &[MeterMeasure]) -> Result<Decimal, PricingError> {
     if smart_meter.is_empty() {
@@ -30,6 +26,7 @@ pub fn price(tariff: &Tariff, smart_meter: &[MeterMeasure]) -> Result<Decimal, P
     Ok(import + supply_charge)
 }
 
+
 #[cfg(test)]
 mod tests {
 
@@ -41,7 +38,7 @@ mod tests {
     use super::*;
     use rust_decimal_macros::dec;
 
-    use chrono::TimeZone;
+    use chrono::{TimeZone, Utc};
 
     #[test]
     fn test_time_of_use_across_midnight() {

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/bill-pricer", "crates/energy-cli", "crates/meter-parser"]
+members = ["crates/bill-pricer", "crates/energy-cli", "crates/meter-parser", "domain"]
 resolver = "2"
 
 
