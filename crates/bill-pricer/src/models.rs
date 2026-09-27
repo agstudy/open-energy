@@ -1,8 +1,16 @@
 use bitflags::bitflags;
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
+#[derive(Deserialize)]
+struct HourMinuteRaw {
+    hour: u32,
+    minute: u32,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(try_from = "HourMinuteRaw")]
 pub struct HourMinute {
     hour: u32,
     minute: u32,
@@ -10,6 +18,14 @@ pub struct HourMinute {
 
 #[derive(Debug)]
 pub struct InvalidHourMinute(u32, u32);
+
+impl TryFrom<HourMinuteRaw> for HourMinute {
+    type Error = InvalidHourMinute;
+
+    fn try_from(value: HourMinuteRaw) -> Result<Self, Self::Error> {
+        HourMinute::new(value.hour, value.minute)
+    }
+}
 
 impl std::fmt::Display for InvalidHourMinute {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -94,8 +110,8 @@ impl HourMinute {
 }
 
 bitflags! {
-
-    pub struct WeekDays: u8 {
+#[derive(Serialize, Deserialize, Debug,PartialEq)]
+pub struct WeekDays: u8 {
 
         const MON = 0b0000001;
         const TUE = 0b0000010;
@@ -107,33 +123,39 @@ bitflags! {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct TimeBand {
     pub start: HourMinute,
     pub end: HourMinute,
     pub days_of_week: Option<WeekDays>,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct RateBlock {
     pub rate: Decimal,
     pub lower_band: Option<Decimal>,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum DiscountValueType {
     Percent,
     Absolute,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum DiscountApplicationType {
     Total,
     Energy,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Discount {
     pub value_type: DiscountValueType,
     pub application_type: DiscountApplicationType,
     pub amount: Decimal,
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct RatePeriod {
     pub rates: Vec<RateBlock>,
     pub time_band: Option<TimeBand>,
@@ -143,6 +165,8 @@ impl RatePeriod {
     /// Returns true if this period covers `at`. `time_band: None` means
     /// "always applies" (used for flat/non TOU).
     /// Day-of-week matching not yet implemented.
+    /// Invariant: `start <= end`. Overnight ranges must be pre-split into two
+    /// bands (see `HourMinute::split_midnight`) before constructing a `TimeBand`.
     pub fn applies_at(&self, at: &HourMinute) -> bool {
         match &self.time_band {
             None => true,
@@ -161,6 +185,7 @@ impl RatePeriod {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct Tariff {
     pub import_tariff: Vec<RatePeriod>,
     pub export_tariff: Option<Vec<RatePeriod>>,
@@ -170,6 +195,10 @@ pub struct Tariff {
 
 #[cfg(test)]
 mod tests {
+    use rust_decimal_macros::dec;
+
+    use crate::tariff::TariffFactory;
+
     use super::*;
 
     #[test]
@@ -197,5 +226,53 @@ mod tests {
                 minute: 59
             }
         );
+    }
+
+    #[test]
+    fn test_serialize_flat_tariff() {
+        let flat_tariff = TariffFactory::flat(dec!(0.1), dec!(1.0));
+        let actual = serde_json::to_string_pretty(&flat_tariff).unwrap();
+
+        let expected = r#"{
+  "import_tariff": [
+    {
+      "rates": [
+        {
+          "rate": "0.1",
+          "lower_band": null
+        }
+      ],
+      "time_band": null
+    }
+  ],
+  "export_tariff": null,
+  "discount": null,
+  "supply_rate": "1.0"
+}"#;
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_deserialize_flat_tariff() {
+        use serde_json::json;
+        let flat_json = json!({
+          "import_tariff": [
+            {
+              "rates": [
+                {
+                  "rate": "0.1",
+                  "lower_band": null
+                }
+              ],
+              "time_band": null
+            }
+          ],
+          "export_tariff": null,
+          "discount": null,
+          "supply_rate": "1.0"
+        });
+
+        let actual: Tariff = serde_json::from_value(flat_json).unwrap();
+        assert_eq!(actual, TariffFactory::flat(dec!(0.1), dec!(1.0)));
     }
 }
