@@ -8,6 +8,7 @@ pub struct MeterMeasure {
     pub import: Decimal,
     pub export: Option<Decimal>,
 }
+
 impl MeterMeasure {
     pub fn new(utc_start: DateTime<Utc>, import: Decimal) -> Self {
         MeterMeasure {

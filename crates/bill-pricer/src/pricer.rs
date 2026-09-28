@@ -1,6 +1,6 @@
 use std::cmp::max;
 
-use crate::{models::Tariff, tariff::PricingError};
+use crate::{models::PricingError, models::Tariff};
 use domain::meter::MeterMeasure;
 
 use rust_decimal::Decimal;
@@ -28,10 +28,7 @@ pub fn price(tariff: &Tariff, smart_meter: &[MeterMeasure]) -> Result<Decimal, P
 #[cfg(test)]
 mod tests {
 
-    use crate::{
-        models::{HourMinute, RatePeriod},
-        tariff::{TariffFactory, Window},
-    };
+    use crate::models::{HourMinute, RatePeriod, TariffFactory, Window};
 
     use super::*;
     use rust_decimal_macros::dec;
@@ -50,7 +47,8 @@ mod tests {
                 start: HourMinute::new(21, 0).unwrap(),
             }, // off-peak: 21:00–15:59
             dec!(1.0),
-        );
+        )
+        .unwrap();
 
         let smart_meter = vec![
             MeterMeasure {

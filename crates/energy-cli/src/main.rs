@@ -1,13 +1,14 @@
-use bill_pricer::models::{HourMinute, InvalidStrHourMinute};
+use bill_pricer::models::HourMinute;
+use bill_pricer::models::{TariffFactory, Window};
 use bill_pricer::pricer::price;
-use bill_pricer::tariff::{TariffFactory, Window};
 use clap::{Parser, Subcommand};
 use domain::meter::merge_import_export;
 use rust_decimal::Decimal;
 use std::fs::File;
-use std::path::PathBuf;
-
+use std::path::{Path, PathBuf};
 // Import your library crates
+use anyhow::Context;
+use anyhow::Result as AnyResult;
 use meter_parser::Nem12Parser;
 
 #[derive(Parser)]
@@ -19,7 +20,7 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
-enum TariffTypeCmd {
+enum TariffCmd {
     /// Flat rate tariff
     Flat {
         #[arg(long)]
@@ -32,11 +33,11 @@ enum TariffTypeCmd {
         #[arg(long)]
         peak: Decimal,
         #[arg(long)]
-        start_peak: String,
+        start_peak: HourMinute,
         #[arg(long)]
         off_peak: Decimal,
         #[arg(long)]
-        start_off_peak: String,
+        start_off_peak: HourMinute,
         #[arg(long)]
         supply: Decimal,
     },
@@ -60,58 +61,8 @@ enum Commands {
         file: PathBuf,
 
         #[command(subcommand)]
-        tariff: TariffTypeCmd,
+        tariff: TariffCmd,
     },
-}
-
-fn main() {
-    let cli = Cli::parse();
-
-    match cli.command {
-        Commands::Parse { file, verbose } => {
-            handle_parse(file, verbose);
-        }
-        Commands::Price { file, tariff } => match TariffType::try_from(tariff) {
-            Ok(tariff) => handle_price(file, tariff),
-            Err(e) => eprintln!("Could not parse tariff {}", e),
-        },
-    }
-}
-
-// --- Command Handlers ---
-
-fn parse_file(path: &PathBuf) -> Option<Nem12Parser> {
-    let file = match File::open(path) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("Could not open {}: {}", path.display(), e);
-            return None;
-        }
-    };
-
-    let mut parser = Nem12Parser::new();
-    match parser.parse_stream(file) {
-        Ok(_) => Some(parser),
-        Err(e) => {
-            eprintln!("Parsing failed: {:?}", e);
-            None
-        }
-    }
-}
-
-fn handle_parse(path: PathBuf, verbose: bool) {
-    println!("--- Running NEM12 Parser ---");
-    if let Some(parser) = parse_file(&path) {
-        println!("Success! Parsed {} days.", parser.results.len());
-        if verbose {
-            for result in &parser.results {
-                println!("{:?}", result);
-            }
-        }
-        for (key, value) in &parser.summary() {
-            println!("{:?}: {}", key, value);
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -127,50 +78,85 @@ enum TariffType {
     },
 }
 
-impl TryFrom<TariffTypeCmd> for TariffType {
-    type Error = InvalidStrHourMinute;
-    fn try_from(c: TariffTypeCmd) -> Result<Self, InvalidStrHourMinute> {
+impl From<TariffCmd> for TariffType {
+    fn from(c: TariffCmd) -> Self {
         match c {
-            TariffTypeCmd::Flat { rate, supply } => Ok(TariffType::Flat { rate, supply }),
-            TariffTypeCmd::Tou {
+            TariffCmd::Flat { rate, supply } => TariffType::Flat { rate, supply },
+            TariffCmd::Tou {
                 peak,
                 start_peak,
                 off_peak,
                 start_off_peak,
                 supply,
-            } => Ok(TariffType::Tou {
+            } => TariffType::Tou {
                 peak: Window {
                     rate: peak,
-                    start: HourMinute::try_from(start_peak.as_str())?,
+                    start: start_peak,
                 },
                 off_peak: Window {
                     rate: off_peak,
-                    start: HourMinute::try_from(start_off_peak.as_str())?,
+                    start: start_off_peak,
                 },
                 supply,
-            }),
+            },
         }
     }
 }
 
-fn handle_price(path: PathBuf, tariff_type: TariffType) {
-    println!("--- Pricing NEM12 smart meter ---");
-    if let Some(parser) = parse_file(&path) {
-        println!("Success! Parsed {} days.", parser.results.len());
-        let smart_meter = merge_import_export(&parser.import(), &parser.export());
+fn main() -> AnyResult<()> {
+    let cli = Cli::parse();
 
-        let tariff = match tariff_type {
-            TariffType::Flat { rate, supply } => TariffFactory::flat(rate, supply),
-            TariffType::Tou {
-                peak,
-                off_peak,
-                supply,
-            } => TariffFactory::time_of_use(peak, off_peak, supply),
-        };
-
-        match price(&tariff, &smart_meter) {
-            Ok(result) => println!("pricing result is : {:?}", result),
-            Err(e) => eprintln!("Pricing failed: {:?}", e),
+    match cli.command {
+        Commands::Parse { file, verbose } => {
+            run_parse(&file, verbose)?;
+        }
+        Commands::Price { file, tariff } => {
+            let bill = price_file(&file, tariff.into())?;
+            println!("Bill is : {}", bill);
         }
     }
+    Ok(())
+}
+
+// --- Command Handlers ---
+
+fn parse_file(path: &Path) -> AnyResult<Nem12Parser> {
+    let file = File::open(path).with_context(|| format!("Could not open {}", path.display()))?;
+
+    let mut parser = Nem12Parser::new();
+    parser.parse_stream(file).context("NEM12 Parsing failed")?;
+    Ok(parser)
+}
+
+fn price_file(path: &Path, tariff_type: TariffType) -> AnyResult<Decimal> {
+    let tariff = match tariff_type {
+        TariffType::Flat { rate, supply } => TariffFactory::flat(rate, supply),
+        TariffType::Tou {
+            peak,
+            off_peak,
+            supply,
+        } => TariffFactory::time_of_use(peak, off_peak, supply)?,
+    };
+
+    println!("--- Pricing NEM12 smart meter ---");
+    let parser = parse_file(path).context("Failed to parse Nem12 file")?;
+    println!("Success! Parsed {} days.", parser.results.len());
+    let smart_meter = merge_import_export(&parser.import(), &parser.export());
+
+    Ok(price(&tariff, &smart_meter)?)
+}
+
+fn run_parse(path: &Path, verbose: bool) -> AnyResult<()> {
+    eprintln!("--- Running NEM12 Parser ---");
+    let parser = parse_file(path).context("Failed to parse Nem12 file")?;
+    println!("Success! Parsed {} days.", parser.results.len());
+    if verbose {
+        for result in &parser.results {
+            println!("{:#?}", result);
+        }
+    }
+    for (key, value) in &parser.summary() {
+        println!("{}: {}", key, value);
+    }
+    Ok(())
 }
