@@ -11,3 +11,4 @@ rust_decimal_macros = { workspace = true }
 meter-parser = { path = "../meter-parser" }
 bill-pricer = {path ="../bill-pricer"}
 domain = {path= "../../domain"}
+anyhow = {workspace = true}
