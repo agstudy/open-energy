@@ -138,9 +138,9 @@ fn price_file(path: &Path, tariff_type: TariffType) -> AnyResult<Decimal> {
         } => TariffFactory::time_of_use(peak, off_peak, supply)?,
     };
 
-    println!("--- Pricing NEM12 smart meter ---");
+    eprintln!("--- Pricing NEM12 smart meter ---");
     let parser = parse_file(path).context("Failed to parse Nem12 file")?;
-    println!("Success! Parsed {} days.", parser.results.len());
+    eprintln!("Success! Parsed {} days.", parser.results.len());
     let smart_meter = merge_import_export(&parser.import(), &parser.export());
 
     Ok(price(&tariff, &smart_meter)?)
@@ -148,8 +148,8 @@ fn price_file(path: &Path, tariff_type: TariffType) -> AnyResult<Decimal> {
 
 fn run_parse(path: &Path, verbose: bool) -> AnyResult<()> {
     eprintln!("--- Running NEM12 Parser ---");
-    let parser = parse_file(path).context("Failed to parse Nem12 file")?;
-    println!("Success! Parsed {} days.", parser.results.len());
+    let parser = parse_file(path)?;
+    eprintln!("Success! Parsed {} days.", parser.results.len());
     if verbose {
         for result in &parser.results {
             println!("{:#?}", result);
