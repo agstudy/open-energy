@@ -7,7 +7,7 @@ struct HourMinuteRaw {
     minute: u32,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
 #[serde(try_from = "HourMinuteRaw")]
 pub struct HourMinute {
     hour: u32,
@@ -104,14 +104,35 @@ impl HourMinute {
             vec![(self, end)]
         }
     }
+
+    pub fn total_minutes(&self) -> u32 {
+        self.hour * 60 + self.minute
+    }
+
+    pub const fn min() -> Self {
+        Self { hour: 0, minute: 0 }
+    }
+
+    pub const fn max() -> Self {
+        Self {
+            hour: Self::MAX_HOUR,
+            minute: Self::MAX_MINUTE,
+        }
+    }
 }
 
+// pub trait Ord: Eq + PartialOrd<Self> {
+//     fn cmp(&self, other: &Self) -> Ordering;
+// }
 impl std::str::FromStr for HourMinute {
     type Err = InvalidStrHourMinute;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::try_from(s)
     }
 }
+
+pub const START_OF_DAY: HourMinute = HourMinute::min();
+pub const END_OF_DAY: HourMinute = HourMinute::max();
 
 #[cfg(test)]
 mod tests {

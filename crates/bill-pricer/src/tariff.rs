@@ -1,13 +1,14 @@
-use super::hour_minute::{HourMinute, InvalidHourMinute};
-use super::time_band::{InvalidTimeBand, TimeBand};
+use crate::models::{END_OF_DAY, HourMinute, InvalidHourMinute, START_OF_DAY};
+use crate::models::{InvalidTimeBand, TimeBand};
 use chrono::{DateTime, Timelike, Utc};
 use rust_decimal::Decimal;
+use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct RateBlock {
     pub rate: Decimal,
-    pub lower_band: Option<Decimal>,
+    pub lower_band: Decimal,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -32,27 +33,19 @@ pub struct Discount {
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct RatePeriod {
     pub rates: Vec<RateBlock>,
-    pub time_band: Option<TimeBand>,
+    pub time_band: TimeBand,
 }
 
 impl RatePeriod {
-    /// Returns true if this period covers `at`. `time_band: None` means
-    /// "always applies" (used for flat/non TOU).
-    /// Day-of-week matching not yet implemented.
-    /// Invariant: `start <= end`. Overnight ranges must be pre-split into two
-    /// bands (see `HourMinute::split_midnight`) before constructing a `TimeBand`.
     pub fn applies_at(&self, at: &HourMinute) -> bool {
-        match &self.time_band {
-            None => true,
-            Some(tb) => tb.start() <= *at && *at <= tb.end(),
-        }
+        self.time_band.start() <= *at && *at <= self.time_band.end()
     }
 
-    pub fn new(rate: Decimal, time_band: Option<TimeBand>) -> Self {
+    pub fn new(rate: Decimal, time_band: TimeBand) -> Self {
         RatePeriod {
             rates: vec![RateBlock {
                 rate,
-                lower_band: None,
+                lower_band: dec!(0.0),
             }],
             time_band,
         }
@@ -125,7 +118,7 @@ impl TariffFactory {
             .into_iter()
             .map(|(s, e)| {
                 let tb = TimeBand::new(s, e, None)?;
-                Ok(RatePeriod::new(rate, Some(tb)))
+                Ok(RatePeriod::new(rate, tb))
             })
             .collect()
     }
@@ -135,9 +128,9 @@ impl TariffFactory {
             import_tariff: vec![RatePeriod {
                 rates: vec![RateBlock {
                     rate: flat_rate,
-                    lower_band: None,
+                    lower_band: dec!(0),
                 }],
-                time_band: None,
+                time_band: TimeBand::new(START_OF_DAY, END_OF_DAY, None).unwrap(),
             }],
             export_tariff: None,
             discount: None,
@@ -184,10 +177,20 @@ mod tests {
       "rates": [
         {
           "rate": "0.1",
-          "lower_band": null
+          "lower_band": "0.0"
         }
       ],
-      "time_band": null
+      "time_band": {
+        "start": {
+          "hour": 0,
+          "minute": 0
+        },
+        "end": {
+          "hour": 23,
+          "minute": 59
+        },
+        "days_of_week": null
+      }
     }
   ],
   "export_tariff": null,
@@ -200,23 +203,32 @@ mod tests {
     #[test]
     fn test_deserialize_flat_tariff() {
         use serde_json::json;
-        let flat_json = json!({
-          "import_tariff": [
+        let flat_json = json!(
+          {"import_tariff": [
             {
               "rates": [
                 {
                   "rate": "0.1",
-                  "lower_band": null
+                  "lower_band": "0.0"
                 }
               ],
-              "time_band": null
+              "time_band": {
+                "start": {
+                  "hour": 0,
+                  "minute": 0
+                },
+                "end": {
+                  "hour": 23,
+                  "minute": 59
+                },
+                "days_of_week": null
+              }
             }
           ],
           "export_tariff": null,
           "discount": null,
           "supply_rate": "1.0"
         });
-
         let actual: Tariff = serde_json::from_value(flat_json).unwrap();
         assert_eq!(actual, TariffFactory::flat(dec!(0.1), dec!(1.0)));
     }

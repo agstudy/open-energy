@@ -1,6 +1,6 @@
 use bill_pricer::models::HourMinute;
-use bill_pricer::models::{TariffFactory, Window};
 use bill_pricer::pricer::price;
+use bill_pricer::tariff::{TariffFactory, Window};
 use clap::{Parser, Subcommand};
 use domain::meter::merge_import_export;
 use rust_decimal::Decimal;
