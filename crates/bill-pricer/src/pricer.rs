@@ -17,11 +17,11 @@ pub fn price(tariff: &Tariff, smart_meter: &[MeterMeasure]) -> Result<Decimal, P
         0
     };
 
-    let supply_charge = tariff.supply_rate * Decimal::from(days);
+    let supply_charge = tariff.supply_rate() * Decimal::from(days);
 
     let import = smart_meter.iter().try_fold(Decimal::ZERO, |acc, x| {
         let v = tariff.rate_at(x.utc_start)?;
-        Ok(acc + x.import * v)
+        Ok::<Decimal, PricingError>(acc + x.import * v)
     })?;
     Ok(import + supply_charge)
 }
@@ -29,8 +29,8 @@ pub fn price(tariff: &Tariff, smart_meter: &[MeterMeasure]) -> Result<Decimal, P
 #[cfg(test)]
 mod tests {
 
-    use crate::models::{HourMinute, START_OF_DAY, TimeBand};
-    use crate::tariff::{RatePeriod, TariffFactory, Window};
+    use crate::models::HourMinute;
+    use crate::tariff_factory::{TariffFactory, Window};
 
     use super::*;
     use rust_decimal_macros::dec;
@@ -77,58 +77,14 @@ mod tests {
             export: None,
         }];
 
-        let flat_tariff = TariffFactory::flat(dec!(0.2), dec!(1.0));
+        let flat_tariff = TariffFactory::flat(dec!(0.2), dec!(1.0)).unwrap();
 
         assert_eq!(price(&flat_tariff, &smart_meter).unwrap(), dec!(3));
     }
 
     #[test]
-    fn test_empty_rates_on_matched_period() {
-        let tariff = Tariff {
-            import_tariff: vec![RatePeriod {
-                rates: vec![],
-                time_band: TimeBand::new(START_OF_DAY, crate::models::END_OF_DAY, None).unwrap(),
-            }],
-            export_tariff: None,
-            discount: None,
-            supply_rate: dec!(1.0),
-        };
-        let smart_meter = vec![MeterMeasure {
-            utc_start: Utc::now(),
-            import: dec!(10.0),
-            export: None,
-        }];
-
-        assert!(matches!(
-            price(&tariff, &smart_meter),
-            Err(PricingError::NoRates)
-        ));
-    }
-
-    #[test]
-    fn test_empty_tariff() {
-        let smart_meter = vec![MeterMeasure {
-            utc_start: Utc::now(),
-            import: dec!(10.0),
-            export: None,
-        }];
-
-        let tariff = Tariff {
-            import_tariff: vec![],
-            export_tariff: None,
-            discount: None,
-            supply_rate: dec!(1.0),
-        };
-
-        assert!(matches!(
-            price(&tariff, &smart_meter),
-            Err(PricingError::NoTariff)
-        ));
-    }
-
-    #[test]
     fn test_empty_smart_meter() {
-        let tariff = TariffFactory::flat(dec!(0.2), dec!(1.0));
+        let tariff = TariffFactory::flat(dec!(0.2), dec!(1.0)).unwrap();
 
         let smart_meter: Vec<MeterMeasure> = vec![];
 
