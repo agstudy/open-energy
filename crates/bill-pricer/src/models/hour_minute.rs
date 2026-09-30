@@ -105,8 +105,15 @@ impl HourMinute {
         }
     }
 
-    pub fn total_minutes(&self) -> u32 {
+    pub fn minute_of_day(&self) -> u32 {
         self.hour * 60 + self.minute
+    }
+
+    pub fn from_minute_of_day(m: u32) -> Self {
+        Self {
+            hour: m / 60,
+            minute: m % 60,
+        }
     }
 
     pub const fn min() -> Self {
@@ -121,9 +128,12 @@ impl HourMinute {
     }
 }
 
-// pub trait Ord: Eq + PartialOrd<Self> {
-//     fn cmp(&self, other: &Self) -> Ordering;
-// }
+impl std::fmt::Display for HourMinute {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:02}:{:02}", self.hour, self.minute)
+    }
+}
+
 impl std::str::FromStr for HourMinute {
     type Err = InvalidStrHourMinute;
     fn from_str(s: &str) -> Result<Self, Self::Err> {

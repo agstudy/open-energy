@@ -1,6 +1,6 @@
 use bill_pricer::models::HourMinute;
 use bill_pricer::pricer::price;
-use bill_pricer::tariff::{TariffFactory, Window};
+use bill_pricer::tariff_factory::{TariffFactory, Window};
 use clap::{Parser, Subcommand};
 use domain::meter::merge_import_export;
 use rust_decimal::Decimal;
@@ -130,7 +130,7 @@ fn parse_file(path: &Path) -> AnyResult<Nem12Parser> {
 
 fn price_file(path: &Path, tariff_type: TariffType) -> AnyResult<Decimal> {
     let tariff = match tariff_type {
-        TariffType::Flat { rate, supply } => TariffFactory::flat(rate, supply),
+        TariffType::Flat { rate, supply } => TariffFactory::flat(rate, supply)?,
         TariffType::Tou {
             peak,
             off_peak,

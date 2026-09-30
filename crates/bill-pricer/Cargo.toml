@@ -4,13 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-thiserror = {workspace = true}
+thiserror = { workspace = true }
 rust_decimal = { workspace = true }
 rust_decimal_macros = { workspace = true }
-serde = { workspace = true}
-serde_json = { workspace = true}
+serde = { workspace = true }
+serde_json = { workspace = true }
 
-bitflags = {workspace = true}
+bitflags = { workspace = true }
 chrono = { workspace = true }
 domain = { path = "../../domain" }
-

@@ -18,15 +18,15 @@ pub struct Nem12Parser {
 }
 
 fn parse_200_to_state(row: &csv::StringRecord) -> Result<MeterState, ParserError> {
-    let nmi = row.get(1).ok_or(ParserError::InvalidFormat)?.to_string();
-    let suffix = row.get(4).ok_or(ParserError::InvalidFormat)?.to_string();
-    let uom_str = row.get(7).ok_or(ParserError::InvalidFormat)?;
+    let nmi = row.get(1).ok_or(ParserError::InvalidFormat(1))?.to_string();
+    let suffix = row.get(4).ok_or(ParserError::InvalidFormat(4))?.to_string();
+    let uom_str = row.get(7).ok_or(ParserError::InvalidFormat(7))?;
     let uom = UnitOfMeasure::from_str(uom_str)?;
 
-    let interval_minutes_str = row.get(8).ok_or(ParserError::InvalidFormat)?;
+    let interval_minutes_str = row.get(8).ok_or(ParserError::InvalidFormat(8))?;
     let interval_minutes = interval_minutes_str
         .parse::<u32>()
-        .map_err(|_| ParserError::InvalidFormat)?;
+        .map_err(|_| ParserError::InvalidFormat(8))?;
 
     // Determine the type based on the first character of the suffix
     // and the Unit of Measure (UOM)
@@ -60,7 +60,7 @@ fn parse_200_to_state(row: &csv::StringRecord) -> Result<MeterState, ParserError
 }
 
 fn transform_300(state: &MeterState, record: &csv::StringRecord) -> Result<Nem12_300, ParserError> {
-    let date_str = record.get(1).ok_or(ParserError::InvalidFormat)?;
+    let date_str = record.get(1).ok_or(ParserError::InvalidFormat(1))?;
 
     let utc_start = parse_date(date_str)?;
 
@@ -130,7 +130,10 @@ impl Nem12Parser {
             .from_reader(reader); // Takes any reader (File, Cursor, Network)
 
         for (index, result) in rdr.records().enumerate() {
-            let record = result.map_err(|_| ParserError::InvalidFormat)?;
+            let record = result.map_err(|e| ParserError::Csv {
+                line: index,
+                source: e,
+            })?;
             if let Err(e) = self.handle_record(&record) {
                 if record.get(0) == Some("200") {
                     return Err(e); // fatal — no meter context, further 300s are meaningless

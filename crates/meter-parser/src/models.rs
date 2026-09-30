@@ -6,23 +6,28 @@ use rust_decimal_macros::dec;
 
 // --- Models ---
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ParserError {
-    InvalidFormat,
+    #[error("Invalid format to get meter state at {0}")]
+    InvalidFormat(u32),
+    #[error("Unknown Timestamp format")]
     InvalidTimestamp,
+    #[error("No Meter state data")]
     NoMeterData,
+    #[error("I/O error: {0}")]
     IoError(std::io::Error),
+    #[error("Impossible to convert meter measure {0} as decimal value")]
     InvalidNumber(String),
+    #[error("Unknown smart meter quality: {0} ")]
     InvalidReadingQuality(String),
+    #[error("Invalid unit of measure: {0} ")]
     InvalidUnitOfMeasure(String),
-}
-
-impl std::error::Error for ParserError {}
-
-impl std::fmt::Display for ParserError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
+    #[error("CSV error at line {line}: {source}")]
+    Csv {
+        line: usize,
+        #[source]
+        source: csv::Error,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
