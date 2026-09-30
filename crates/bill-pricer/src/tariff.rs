@@ -177,7 +177,7 @@ mod tests {
       "rates": [
         {
           "rate": "0.1",
-          "lower_band": "0.0"
+          "lower_band": "0"
         }
       ],
       "time_band": {

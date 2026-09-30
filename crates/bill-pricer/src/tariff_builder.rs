@@ -120,6 +120,10 @@ impl TariffBuilder {
 
             let bands: Vec<_> = rp.rates.iter().map(|v| v.lower_band).collect();
 
+            if bands[0] != Decimal::ZERO {
+                return Err(TariffError::ThresholdTierError);
+            }
+
             for w in bands.windows(2) {
                 let (current, next) = (&w[0], &w[1]);
                 if current >= next {
