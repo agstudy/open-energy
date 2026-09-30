@@ -127,8 +127,6 @@ impl Tariff {
     }
 }
 
-
-
 /// Validate that a set of rate periods fully covers a day with no overlaps
 /// and monotonic tier thresholds.
 ///

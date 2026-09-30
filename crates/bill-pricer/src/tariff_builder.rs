@@ -1,6 +1,6 @@
 use rust_decimal::Decimal;
 
-use crate::models::{HourMinute, InvalidTimeBand, TimeBand, WeekDays};
+use crate::models::{HourMinute, TimeBand, WeekDays};
 
 use crate::tariff::{Discount, RateBlock, RatePeriod, Tariff, TariffError};
 
@@ -35,7 +35,7 @@ impl RatePeriodBuilder {
         start: HourMinute,
         end: HourMinute,
         days_of_week: Option<WeekDays>,
-    ) -> Result<Self, InvalidTimeBand> {
+    ) -> Result<Self, TariffError> {
         self.time_band = TimeBand::new(start, end, days_of_week)?;
         Ok(self)
     }
@@ -62,9 +62,9 @@ impl TariffBuilder {
         self
     }
 
-    pub fn rate_period<F>(mut self, f: F) -> Result<Self, InvalidTimeBand>
+    pub fn rate_period<F>(mut self, f: F) -> Result<Self, TariffError>
     where
-        F: FnOnce(RatePeriodBuilder) -> Result<RatePeriodBuilder, InvalidTimeBand>,
+        F: FnOnce(RatePeriodBuilder) -> Result<RatePeriodBuilder, TariffError>,
     {
         let builder = f(RatePeriodBuilder::default())?;
         self.import_tariff.push(builder.build());
@@ -72,9 +72,9 @@ impl TariffBuilder {
         Ok(self)
     }
 
-    pub fn export_rate_period<F>(mut self, f: F) -> Result<Self, InvalidTimeBand>
+    pub fn export_rate_period<F>(mut self, f: F) -> Result<Self, TariffError>
     where
-        F: FnOnce(RatePeriodBuilder) -> Result<RatePeriodBuilder, InvalidTimeBand>,
+        F: FnOnce(RatePeriodBuilder) -> Result<RatePeriodBuilder, TariffError>,
     {
         let builder = f(RatePeriodBuilder::default())?;
         self.export_tariff
@@ -172,7 +172,7 @@ mod tests {
     fn test_rate_period_rejects_invalid_band() {
         let result = TariffBuilder::default()
             .rate_period(|s| s.time_band(HourMinute::max(), HourMinute::min(), None)); // start > end
-        assert!(matches!(result, Err(InvalidTimeBand)));
+        assert!(matches!(result, Err(TariffError::InvalidTimeBand(_))));
     }
 
     #[test]
