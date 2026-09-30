@@ -89,9 +89,10 @@ impl TariffBuilder {
         F: FnOnce(RatePeriodBuilder) -> Result<RatePeriodBuilder, InvalidTimeBand>,
     {
         let builder = f(RatePeriodBuilder::default())?;
-        if let Some(export) = &mut self.export_tariff {
-            export.push(builder.build());
-        }
+        self.export_tariff
+            .get_or_insert_with(Vec::new)
+            .push(builder.build());
+
         Ok(self)
     }
 
