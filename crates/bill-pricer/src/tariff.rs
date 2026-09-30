@@ -1,3 +1,5 @@
+use std::cmp::min;
+
 use crate::models::HourMinute;
 use crate::models::{InvalidTimeBand, TimeBand};
 use chrono::{DateTime, Timelike, Utc};
@@ -55,11 +57,35 @@ impl RatePeriod {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(try_from = "TariffRaw")]
 pub struct Tariff {
     import_tariff: Vec<RatePeriod>,
     export_tariff: Option<Vec<RatePeriod>>,
     discount: Option<Vec<Discount>>,
     supply_rate: Decimal,
+}
+
+#[derive(Deserialize)]
+struct TariffRaw {
+    import_tariff: Vec<RatePeriod>,
+    export_tariff: Option<Vec<RatePeriod>>,
+    discount: Option<Vec<Discount>>,
+    supply_rate: Decimal,
+}
+
+impl TryFrom<TariffRaw> for Tariff {
+    type Error = TariffError;
+    fn try_from(raw: TariffRaw) -> Result<Self, TariffError> {
+        let mut tariff = Tariff {
+            import_tariff: raw.import_tariff,
+            export_tariff: raw.export_tariff,
+            supply_rate: raw.supply_rate,
+            discount: raw.discount,
+        };
+
+        tariff.validate()?;
+        Ok(tariff)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -72,11 +98,11 @@ pub enum PricingError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum TariffError {
-    #[error("bands leave a gap starting at {0:?}")]
+    #[error("bands leave a gap starting at {0}")]
     Gap(HourMinute),
-    #[error("bands leave a gap at {0:?}")]
+    #[error("bands leave a gap at {0}")]
     GapAt(HourMinute),
-    #[error("bands overlap at {0:?}")]
+    #[error("bands overlap at {0}")]
     Overlap(HourMinute),
     #[error("tier thresholds out of order")]
     TierOrder,
@@ -140,20 +166,31 @@ fn validate_tariff(rps: &mut [RatePeriod]) -> Result<(), TariffError> {
     let mut cursor: u32 = 0;
     for rp in rps.iter() {
         check_tier_order(&rp.rates)?;
-        let tb = &rp.time_band;
-        if tb.start().minute_of_day() > cursor {
-            return Err(TariffError::Gap(HourMinute::from_minute_of_day(cursor)));
-        } else if tb.start().minute_of_day() < cursor {
-            return Err(TariffError::Overlap(HourMinute::from_minute_of_day(cursor)));
+
+        let start = rp.time_band.start().minute_of_day();
+        let end = rp.time_band.end().minute_of_day();
+
+        if start > cursor {
+            return Err(TariffError::Gap(from_minute_of_day_unchecked(cursor)));
+        } else if start < cursor {
+            return Err(TariffError::Overlap(from_minute_of_day_unchecked(min(
+                cursor, 1439,
+            ))));
         }
-        // `end()` is inclusive, so the next band must start at end+1 to be gap-free.
-        cursor = tb.end().minute_of_day() + 1;
+        cursor = end + 1;
     }
+
     if cursor != 1440 {
-        return Err(TariffError::Gap(HourMinute::from_minute_of_day(cursor)));
+        return Err(TariffError::Gap(from_minute_of_day_unchecked(min(
+            cursor, 1439,
+        ))));
     }
 
     Ok(())
+}
+
+fn from_minute_of_day_unchecked(m: u32) -> HourMinute {
+    HourMinute::from_minute_of_day(m).expect("minute-of-day out of range")
 }
 
 fn check_tier_order(rates: &[RateBlock]) -> Result<(), TariffError> {
