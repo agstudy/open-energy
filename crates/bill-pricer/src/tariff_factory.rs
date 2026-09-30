@@ -24,8 +24,7 @@ impl TariffFactory {
                     HourMinute::max(),
                     None,
                 )
-            })
-            .unwrap()
+            })?
             .build()
     }
     pub fn time_of_use(
