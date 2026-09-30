@@ -75,4 +75,26 @@ impl TimeBand {
     pub fn days_of_week(&self) -> Option<WeekDays> {
         self.days_of_week
     }
+
+    pub fn full_day() -> Self {
+        Self {
+            start: HourMinute::min(),
+            end: HourMinute::max(),
+            days_of_week: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_full_day_time_band() {
+        let tb = TimeBand::full_day();
+
+        assert_eq!(tb.start(), HourMinute::new(0, 0).unwrap());
+        assert_eq!(tb.end(), HourMinute::new(23, 59).unwrap());
+    }
 }

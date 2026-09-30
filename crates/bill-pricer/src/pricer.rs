@@ -1,6 +1,7 @@
 use std::cmp::max;
 
-use crate::{models::PricingError, models::Tariff};
+use crate::tariff::PricingError;
+use crate::tariff::Tariff;
 use domain::meter::MeterMeasure;
 
 use rust_decimal::Decimal;
@@ -16,7 +17,7 @@ pub fn price(tariff: &Tariff, smart_meter: &[MeterMeasure]) -> Result<Decimal, P
         0
     };
 
-    let supply_charge: Decimal = tariff.supply_rate * Decimal::from(days);
+    let supply_charge = tariff.supply_rate * Decimal::from(days);
 
     let import = smart_meter.iter().try_fold(Decimal::ZERO, |acc, x| {
         let v = tariff.rate_at(x.utc_start)?;
@@ -28,7 +29,8 @@ pub fn price(tariff: &Tariff, smart_meter: &[MeterMeasure]) -> Result<Decimal, P
 #[cfg(test)]
 mod tests {
 
-    use crate::models::{HourMinute, RatePeriod, TariffFactory, Window};
+    use crate::models::{HourMinute, START_OF_DAY, TimeBand};
+    use crate::tariff::{RatePeriod, TariffFactory, Window};
 
     use super::*;
     use rust_decimal_macros::dec;
@@ -85,7 +87,7 @@ mod tests {
         let tariff = Tariff {
             import_tariff: vec![RatePeriod {
                 rates: vec![],
-                time_band: None,
+                time_band: TimeBand::new(START_OF_DAY, crate::models::END_OF_DAY, None).unwrap(),
             }],
             export_tariff: None,
             discount: None,
