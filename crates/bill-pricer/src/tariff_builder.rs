@@ -64,6 +64,8 @@ pub enum TariffError {
     OverlapTimeBandError,
     #[error("tier thresholds out of order")]
     ThresholdTierError,
+    #[error("Missing rates")]
+    MissingRatesError,
 }
 
 impl TariffBuilder {
@@ -96,6 +98,25 @@ impl TariffBuilder {
         Ok(self)
     }
 
+    pub fn check_tier_order(rates: &[RateBlock]) -> Result<(), TariffError> {
+        let bands: Vec<_> = rates.iter().map(|v| v.lower_band).collect();
+
+        let Some((&first, _)) = bands.split_first() else {
+            return Err(TariffError::MissingRatesError);
+        };
+
+        if first != Decimal::ZERO {
+            return Err(TariffError::ThresholdTierError);
+        }
+
+        for w in bands.windows(2) {
+            let (current, next) = (&w[0], &w[1]);
+            if current >= next {
+                return Err(TariffError::ThresholdTierError);
+            }
+        }
+        Ok(())
+    }
     /*
     1. sort tp by s_i                      -- O(n log n)
     2. cursor ← 0
@@ -111,26 +132,15 @@ impl TariffBuilder {
 
         let mut cursor: u32 = 0;
         for rp in rps.iter() {
+            Self::check_tier_order(&rp.rates)?;
             let tb = &rp.time_band;
             if tb.start().total_minutes() > cursor {
                 return Err(TariffError::TimeBandGapError);
             } else if tb.start().total_minutes() < cursor {
                 return Err(TariffError::OverlapTimeBandError);
             }
+            // `end()` is inclusive, so the next band must start at end+1 to be gap-free.
             cursor = tb.end().total_minutes() + 1;
-
-            let bands: Vec<_> = rp.rates.iter().map(|v| v.lower_band).collect();
-
-            if bands[0] != Decimal::ZERO {
-                return Err(TariffError::ThresholdTierError);
-            }
-
-            for w in bands.windows(2) {
-                let (current, next) = (&w[0], &w[1]);
-                if current >= next {
-                    return Err(TariffError::ThresholdTierError);
-                }
-            }
         }
         if cursor != 1440 {
             return Err(TariffError::TimeBandGapError);
