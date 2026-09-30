@@ -99,9 +99,9 @@ impl TariffBuilder {
     }
 
     pub fn check_tier_order(rates: &[RateBlock]) -> Result<(), TariffError> {
-        let bands: Vec<_> = rates.iter().map(|v| v.lower_band).collect();
+        let mut it = rates.iter().map(|v| v.lower_band);
 
-        let Some((&first, _)) = bands.split_first() else {
+        let Some(first) = it.next() else {
             return Err(TariffError::MissingRatesError);
         };
 
@@ -109,24 +109,30 @@ impl TariffBuilder {
             return Err(TariffError::ThresholdTierError);
         }
 
-        for w in bands.windows(2) {
-            let (current, next) = (&w[0], &w[1]);
-            if current >= next {
+        let mut prev = first;
+        for cur in it {
+            if prev >= cur {
                 return Err(TariffError::ThresholdTierError);
             }
+            prev = cur;
         }
         Ok(())
     }
-    /*
-    1. sort tp by s_i                      -- O(n log n)
-    2. cursor ← 0
-    3. for each (s_i, e_i) in sorted order:
-       if s_i > cursor:  return Gap(cursor)       -- hole before this band
-       if s_i < cursor:  return Overlap(s_i)       -- band starts before prev ended
-       cursor ← e_i + 1
-    4. if cursor ≠ 1440:  return Gap(cursor)            -- day not fully covered
-    5. return Ok
-    */
+
+    /// Validate that a set of rate periods fully covers a day with no overlaps
+    /// and monotonic tier thresholds.
+    ///
+    /// ```text
+    /// 1. sort tp by s_i                      -- O(n log n)
+    /// 2. cursor ← 0
+    /// 3. for each (s_i, e_i) in sorted order:
+    ///      check_tier_order(rates_i)?
+    ///      if s_i > cursor:  return Gap(cursor)
+    ///      if s_i < cursor:  return Overlap(s_i)
+    ///      cursor ← e_i + 1
+    /// 4. if cursor ≠ 1440: return Gap(cursor)
+    /// 5. return Ok
+    /// ```
     pub fn validate_tariff(rps: &mut [RatePeriod]) -> Result<(), TariffError> {
         rps.sort_by_key(|rp| rp.time_band.start());
 
@@ -200,7 +206,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_creation() {
+    fn test_multi_tiers_success() {
         let tariff = TariffBuilder::default()
             .supply(dec!(0.1))
             .rate_period(|s| {
@@ -256,5 +262,65 @@ mod tests {
             .build();
 
         assert!(matches!(tariff, Err(TariffError::TimeBandGapError)));
+    }
+
+    #[test]
+    fn test_overlap() {
+        let tariff = TariffBuilder::default()
+            .rate_period(|x| {
+                x.rates(&[(dec!(1.0), dec!(0))]).time_band(
+                    HourMinute::from_str("00:00").unwrap(),
+                    HourMinute::from_str("20:00").unwrap(),
+                    None,
+                )
+            })
+            .unwrap()
+            .rate_period(|x| {
+                x.rates(&[(dec!(1.0), dec!(0))]).time_band(
+                    HourMinute::from_str("16:00").unwrap(),
+                    HourMinute::from_str("23:59").unwrap(),
+                    None,
+                )
+            })
+            .unwrap()
+            .build();
+
+        assert!(matches!(tariff, Err(TariffError::OverlapTimeBandError)));
+    }
+
+    #[test]
+    fn test_export_tariff() {
+        let tariff = TariffBuilder::default()
+            .rate_period(|x| {
+                x.rates(&[(dec!(0.3), dec!(0))]).time_band(
+                    HourMinute::min(),
+                    HourMinute::max(),
+                    None,
+                )
+            })
+            .unwrap()
+            .export_rate_period(|x| {
+                x.rates(&[(dec!(0.05), dec!(0))]).time_band(
+                    HourMinute::min(),
+                    HourMinute::max(),
+                    None,
+                )
+            })
+            .unwrap()
+            .build()
+            .unwrap();
+
+        assert_eq!(tariff.export_tariff.unwrap().len(), 1);
+
+    }
+
+    #[test]
+    fn test_missing_rates() {
+        let result = TariffBuilder::default()
+            .rate_period(|b| b.time_band(HourMinute::min(), HourMinute::max(), None))
+            .unwrap()
+            .build();
+
+        assert!(matches!(result, Err(TariffError::MissingRatesError)));
     }
 }
