@@ -82,6 +82,20 @@ pub struct Window {
     pub start: HourMinute,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum TariffError {
+    #[error("bands leave a gap starting at {0:?}")]
+    Gap(HourMinute),
+    #[error("bands overlap at {0:?}")]
+    Overlap(HourMinute),
+    #[error("tier thresholds out of order")]
+    TierOrder,
+    #[error("Missing rates")]
+    EmptyRates,
+    #[error(transparent)]
+    InvalidTimeBand(#[from] InvalidTimeBand),
+}
+
 impl Tariff {
     pub fn rate_at(&self, at: DateTime<Utc>) -> Result<Decimal, PricingError> {
         let at_hm =
@@ -103,6 +117,73 @@ impl Tariff {
             _ => Err(PricingError::TariffOverlapp),
         }
     }
+
+    pub fn validate(&mut self) -> Result<(), TariffError> {
+        validate_tariff(&mut self.import_tariff)?;
+        if let Some(export) = &mut self.export_tariff {
+            validate_tariff(export)?;
+        }
+        Ok(())
+    }
+}
+
+
+
+/// Validate that a set of rate periods fully covers a day with no overlaps
+/// and monotonic tier thresholds.
+///
+/// ```text
+/// 1. sort tp by s_i                      -- O(n log n)
+/// 2. cursor ← 0
+/// 3. for each (s_i, e_i) in sorted order:
+///      check_tier_order(rates_i)?
+///      if s_i > cursor:  return Gap(cursor)
+///      if s_i < cursor:  return Overlap(s_i)
+///      cursor ← e_i + 1
+/// 4. if cursor ≠ 1440: return Gap(cursor)
+/// 5. return Ok
+/// ```
+fn validate_tariff(rps: &mut [RatePeriod]) -> Result<(), TariffError> {
+    rps.sort_by_key(|rp| rp.time_band.start());
+
+    let mut cursor: u32 = 0;
+    for rp in rps.iter() {
+        check_tier_order(&rp.rates)?;
+        let tb = &rp.time_band;
+        if tb.start().minute_of_day() > cursor {
+            return Err(TariffError::Gap(HourMinute::from_minute_of_day(cursor)));
+        } else if tb.start().minute_of_day() < cursor {
+            return Err(TariffError::Overlap(HourMinute::from_minute_of_day(cursor)));
+        }
+        // `end()` is inclusive, so the next band must start at end+1 to be gap-free.
+        cursor = tb.end().minute_of_day() + 1;
+    }
+    if cursor != 1440 {
+        return Err(TariffError::Gap(HourMinute::from_minute_of_day(cursor)));
+    }
+
+    Ok(())
+}
+
+fn check_tier_order(rates: &[RateBlock]) -> Result<(), TariffError> {
+    let mut it = rates.iter().map(|v| v.lower_band);
+
+    let Some(first) = it.next() else {
+        return Err(TariffError::EmptyRates);
+    };
+
+    if first != Decimal::ZERO {
+        return Err(TariffError::TierOrder);
+    }
+
+    let mut prev = first;
+    for cur in it {
+        if prev >= cur {
+            return Err(TariffError::TierOrder);
+        }
+        prev = cur;
+    }
+    Ok(())
 }
 
 pub struct TariffFactory;
