@@ -8,7 +8,10 @@ license = "MIT OR Apache-2.0"
 clap = { workspace = true }
 rust_decimal = { workspace = true }
 rust_decimal_macros = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
 meter-parser = { path = "../meter-parser" }
-bill-pricer = {path ="../bill-pricer"}
-domain = {path= "../../domain"}
-anyhow = {workspace = true}
+bill-pricer = { path = "../bill-pricer" }
+domain = { path = "../../domain" }

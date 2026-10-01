@@ -66,7 +66,7 @@ pub struct Tariff {
 }
 
 #[derive(Deserialize)]
-struct TariffRaw {
+pub struct TariffRaw {
     import_tariff: Vec<RatePeriod>,
     export_tariff: Option<Vec<RatePeriod>>,
     discount: Option<Vec<Discount>>,
@@ -100,8 +100,8 @@ pub enum PricingError {
 pub enum TariffError {
     #[error("bands leave a gap starting at {0}")]
     Gap(HourMinute),
-    #[error("bands leave a gap at {0}")]
-    GapAt(HourMinute),
+    #[error("There is no matching rate period covering: {0}")]
+    NoMatchingPeriod(HourMinute),
     #[error("bands overlap at {0}")]
     Overlap(HourMinute),
     #[error("tier thresholds out of order")]
@@ -124,7 +124,7 @@ impl Tariff {
             .collect();
 
         match matches.as_slice() {
-            [] => Err(TariffError::GapAt(at_hm)),
+            [] => Err(TariffError::NoMatchingPeriod(at_hm)),
             [period] => period
                 .rates
                 .first()

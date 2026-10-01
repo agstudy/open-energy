@@ -100,7 +100,7 @@ mod tests {
             {
               "rates": [
                 {
-                  "rate": "0.1",
+                  "rate": "0.2",
                   "lower_band": "0.0"
                 }
               ],
@@ -119,7 +119,7 @@ mod tests {
           ],
           "export_tariff": null,
           "discount": null,
-          "supply_rate": "1.0"
+          "supply_rate": "2.0"
         });
         let actual: Tariff = serde_json::from_value(flat_json).unwrap();
         assert_eq!(actual, TariffFactory::flat(dec!(0.1), dec!(1.0)).unwrap());
