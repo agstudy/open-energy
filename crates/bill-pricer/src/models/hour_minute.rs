@@ -74,6 +74,7 @@ impl HourMinute {
             Err(InvalidHourMinute(hour, minute))
         }
     }
+    /// Returns the previous minute, wrapping from 00:00 to 23:59.
     pub fn prev(self) -> HourMinute {
         if self.minute == 0 {
             HourMinute {
