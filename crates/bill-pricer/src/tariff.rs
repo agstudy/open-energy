@@ -117,20 +117,19 @@ impl Tariff {
         let at_hm =
             HourMinute::new(at.hour(), at.minute()).expect("chrono guarantees valid hour/minute");
 
-        let matches: Vec<&RatePeriod> = self
+        let mut matches  = self
             .import_tariff
             .iter()
-            .filter(|p| p.applies_at(&at_hm))
-            .collect();
+            .filter(|p| p.applies_at(&at_hm));
 
-        match matches.as_slice() {
-            [] => Err(TariffError::NoMatchingPeriod(at_hm)),
-            [period] => period
+        match (matches.next(), matches.next()) {
+            (None, _) => Err(TariffError::NoMatchingPeriod(at_hm)),
+            (Some(period), None) => period
                 .rates
                 .first()
                 .ok_or(TariffError::EmptyRates)
                 .map(|b| b.rate),
-            _ => Err(TariffError::Overlap(at_hm)),
+            (Some(_), Some(_)) => Err(TariffError::Overlap(at_hm)),
         }
     }
 
