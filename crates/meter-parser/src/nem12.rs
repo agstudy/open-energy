@@ -3,6 +3,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::collections::HashMap;
 use std::str::FromStr;
+use log::{warn};
 
 use crate::models::{
     MeterState, Nem12_300, ParserError, ReadingQuality, SmartMeterType, UnitOfMeasure,
@@ -138,8 +139,7 @@ impl Nem12Parser {
                 if record.get(0) == Some("200") {
                     return Err(e); // fatal — no meter context, further 300s are meaningless
                 }
-                println!("Row {}: Parsing Error: {:?}", index + 1, e);
-                // We do NOT return Err here, so the loop continues
+                warn!("Row {}: Parsing Error: {:?}", index + 1, e);
             }
         }
         Ok(())
