@@ -1,5 +1,6 @@
 use bill_pricer::models::HourMinute;
 use bill_pricer::pricer::price;
+use bill_pricer::tariff::{Tariff, TariffRaw};
 use bill_pricer::tariff_factory::{TariffFactory, Window};
 use clap::{Parser, Subcommand};
 use domain::meter::merge_import_export;
@@ -10,6 +11,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 use anyhow::Result as AnyResult;
 use meter_parser::Nem12Parser;
+use std::io::BufReader;
 
 #[derive(Parser)]
 #[command(name = "Energy Tool")]
@@ -41,6 +43,10 @@ enum TariffCmd {
         #[arg(long)]
         supply: Decimal,
     },
+    FromFile {
+        #[arg(long = "tariff-file")]
+        file: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -65,7 +71,7 @@ enum Commands {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum TariffType {
     Flat {
         rate: Decimal,
@@ -76,19 +82,22 @@ enum TariffType {
         off_peak: Window,
         supply: Decimal,
     },
+    FromFile(Tariff),
 }
 
-impl From<TariffCmd> for TariffType {
-    fn from(c: TariffCmd) -> Self {
+impl TryFrom<TariffCmd> for TariffType {
+    type Error = anyhow::Error;
+
+    fn try_from(c: TariffCmd) -> Result<Self, Self::Error> {
         match c {
-            TariffCmd::Flat { rate, supply } => TariffType::Flat { rate, supply },
+            TariffCmd::Flat { rate, supply } => Ok(TariffType::Flat { rate, supply }),
             TariffCmd::Tou {
                 peak,
                 start_peak,
                 off_peak,
                 start_off_peak,
                 supply,
-            } => TariffType::Tou {
+            } => Ok(TariffType::Tou {
                 peak: Window {
                     rate: peak,
                     start: start_peak,
@@ -98,7 +107,11 @@ impl From<TariffCmd> for TariffType {
                     start: start_off_peak,
                 },
                 supply,
-            },
+            }),
+            TariffCmd::FromFile { file } => {
+                let tariff = parse_tariff_file(&file)?;
+                Ok(TariffType::FromFile(tariff))
+            }
         }
     }
 }
@@ -111,7 +124,7 @@ fn main() -> AnyResult<()> {
             run_parse(&file, verbose)?;
         }
         Commands::Price { file, tariff } => {
-            let bill = price_file(&file, tariff.into())?;
+            let bill = price_file(&file, tariff.try_into()?)?;
             println!("Bill is : {}", bill);
         }
     }
@@ -128,6 +141,17 @@ fn parse_file(path: &Path) -> AnyResult<Nem12Parser> {
     Ok(parser)
 }
 
+fn parse_tariff_file(path: &Path) -> AnyResult<Tariff> {
+    let file = File::open(path).with_context(|| format!("Could not open {}", path.display()))?;
+
+    let reader = BufReader::new(file);
+
+    // Parse into generic Value
+    let tariff_raw: TariffRaw = serde_json::from_reader(reader)?;
+
+    Tariff::try_from(tariff_raw).context("Tariff serialisation failed")
+}
+
 fn price_file(path: &Path, tariff_type: TariffType) -> AnyResult<Decimal> {
     let tariff = match tariff_type {
         TariffType::Flat { rate, supply } => TariffFactory::flat(rate, supply)?,
@@ -136,6 +160,7 @@ fn price_file(path: &Path, tariff_type: TariffType) -> AnyResult<Decimal> {
             off_peak,
             supply,
         } => TariffFactory::time_of_use(peak, off_peak, supply)?,
+        TariffType::FromFile(tariff) => tariff,
     };
 
     eprintln!("--- Pricing NEM12 smart meter ---");

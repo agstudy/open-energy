@@ -66,7 +66,7 @@ pub struct Tariff {
 }
 
 #[derive(Deserialize)]
-struct TariffRaw {
+pub struct TariffRaw {
     import_tariff: Vec<RatePeriod>,
     export_tariff: Option<Vec<RatePeriod>>,
     discount: Option<Vec<Discount>>,
