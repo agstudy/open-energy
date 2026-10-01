@@ -131,14 +131,14 @@ impl Nem12Parser {
 
         for (index, result) in rdr.records().enumerate() {
             let record = result.map_err(|e| ParserError::Csv {
-                line: index,
+                line: index + 1,
                 source: e,
             })?;
             if let Err(e) = self.handle_record(&record) {
                 if record.get(0) == Some("200") {
                     return Err(e); // fatal — no meter context, further 300s are meaningless
                 }
-                eprintln!("Row {}: Parsing Error: {:?}", index + 1, e);
+                println!("Row {}: Parsing Error: {:?}", index + 1, e);
                 // We do NOT return Err here, so the loop continues
             }
         }

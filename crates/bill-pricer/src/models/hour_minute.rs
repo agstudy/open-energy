@@ -109,11 +109,8 @@ impl HourMinute {
         self.hour * 60 + self.minute
     }
 
-    pub fn from_minute_of_day(m: u32) -> Self {
-        Self {
-            hour: m / 60,
-            minute: m % 60,
-        }
+    pub fn from_minute_of_day(m: u32) -> Result<Self, InvalidHourMinute> {
+        Self::new(m / 60, m % 60)
     }
 
     pub const fn min() -> Self {
