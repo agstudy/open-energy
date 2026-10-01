@@ -130,24 +130,22 @@ fn parse_tariff_file(path: &Path) -> AnyResult<Tariff> {
 
     let reader = BufReader::new(file);
 
-    // Parse into generic Value
     let tariff_raw: TariffRaw = serde_json::from_reader(reader)?;
 
-    Tariff::try_from(tariff_raw).context("Tariff serialisation failed")
+    Tariff::try_from(tariff_raw).context("Failed to load tariff")
 }
 
 fn price_file(path: &Path, tariff: Tariff) -> AnyResult<Decimal> {
 
     eprintln!("--- Pricing NEM12 smart meter ---");
     let parser = parse_file(path).context("Failed to parse Nem12 file")?;
-    eprintln!("Success! Parsed {} days.", parser.results.len());
     let smart_meter = merge_import_export(&parser.import(), &parser.export());
 
     Ok(price(&tariff, &smart_meter)?)
 }
 
 fn run_parse(path: &Path, verbose: bool) -> AnyResult<()> {
-    eprintln!("--- Running NEM12 Parser ---");
+    eprintln!("--- Pricing NEM12 smart meter ---");
     let parser = parse_file(path)?;
     eprintln!("Success! Parsed {} days.", parser.results.len());
     if verbose {
