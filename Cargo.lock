@@ -455,6 +455,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "csv",
+ "log",
  "rust_decimal",
  "rust_decimal_macros",
  "thiserror",
