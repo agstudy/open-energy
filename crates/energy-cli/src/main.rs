@@ -71,51 +71,35 @@ enum Commands {
     },
 }
 
-#[derive(Debug)]
-enum TariffType {
-    Flat {
-        rate: Decimal,
-        supply: Decimal,
-    },
-    Tou {
-        peak: Window,
-        off_peak: Window,
-        supply: Decimal,
-    },
-    FromFile(Tariff),
-}
 
-impl TryFrom<TariffCmd> for TariffType {
+
+impl TryFrom<TariffCmd> for Tariff {
     type Error = anyhow::Error;
 
     fn try_from(c: TariffCmd) -> Result<Self, Self::Error> {
         match c {
-            TariffCmd::Flat { rate, supply } => Ok(TariffType::Flat { rate, supply }),
+            TariffCmd::Flat { rate, supply } => Ok(TariffFactory::flat(rate, supply)?),
             TariffCmd::Tou {
                 peak,
                 start_peak,
                 off_peak,
                 start_off_peak,
                 supply,
-            } => Ok(TariffType::Tou {
-                peak: Window {
+            } => Ok(TariffFactory::time_of_use(
+                Window {
                     rate: peak,
                     start: start_peak,
                 },
-                off_peak: Window {
+                Window {
                     rate: off_peak,
                     start: start_off_peak,
                 },
                 supply,
-            }),
-            TariffCmd::FromFile { file } => {
-                let tariff = parse_tariff_file(&file)?;
-                Ok(TariffType::FromFile(tariff))
-            }
+            )?),
+            TariffCmd::FromFile { file } => parse_tariff_file(&file),
         }
     }
 }
-
 fn main() -> AnyResult<()> {
     let cli = Cli::parse();
 
@@ -152,16 +136,7 @@ fn parse_tariff_file(path: &Path) -> AnyResult<Tariff> {
     Tariff::try_from(tariff_raw).context("Tariff serialisation failed")
 }
 
-fn price_file(path: &Path, tariff_type: TariffType) -> AnyResult<Decimal> {
-    let tariff = match tariff_type {
-        TariffType::Flat { rate, supply } => TariffFactory::flat(rate, supply)?,
-        TariffType::Tou {
-            peak,
-            off_peak,
-            supply,
-        } => TariffFactory::time_of_use(peak, off_peak, supply)?,
-        TariffType::FromFile(tariff) => tariff,
-    };
+fn price_file(path: &Path, tariff: Tariff) -> AnyResult<Decimal> {
 
     eprintln!("--- Pricing NEM12 smart meter ---");
     let parser = parse_file(path).context("Failed to parse Nem12 file")?;
