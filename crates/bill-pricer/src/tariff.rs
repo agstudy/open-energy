@@ -1,13 +1,11 @@
 use std::cmp::min;
 
-use crate::models::HourMinute;
-use crate::models::{InvalidTimeBand, TimeBand};
-use chrono::{DateTime, Timelike, Utc};
+use domain::HourMinute;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 
-use crate::models::WeekDays;
+use crate::{InvalidTimeBand, TimeBand, WeekDays};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct RateBlock {
@@ -42,6 +40,7 @@ pub struct RatePeriod {
 
 impl RatePeriod {
     pub fn applies_at(&self, at: &HourMinute) -> bool {
+
         self.time_band.start() <= *at && *at <= self.time_band.end()
     }
 
@@ -113,15 +112,9 @@ pub enum TariffError {
 }
 
 impl Tariff {
-    pub fn rate_at(&self, at: DateTime<Utc>) -> Result<Decimal, TariffError> {
-        let at_hm =
-            HourMinute::new(at.hour(), at.minute()).expect("chrono guarantees valid hour/minute");
+    pub fn rate_at(&self, at_hm: HourMinute) -> Result<Decimal, TariffError> {
 
-        let mut matches  = self
-            .import_tariff
-            .iter()
-            .filter(|p| p.applies_at(&at_hm));
-
+        let mut matches = self.import_tariff.iter().filter(|p| p.applies_at(&at_hm));
         match (matches.next(), matches.next()) {
             (None, _) => Err(TariffError::NoMatchingPeriod(at_hm)),
             (Some(period), None) => period

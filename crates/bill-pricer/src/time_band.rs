@@ -1,7 +1,7 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use super::hour_minute::HourMinute;
+use domain::hour_minute::HourMinute;
 
 bitflags! {
 #[derive(Serialize, Deserialize, Debug,PartialEq, Clone, Copy)]

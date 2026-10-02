@@ -1,41 +1,40 @@
-use std::cmp::max;
-
 use crate::tariff::PricingError;
 use crate::tariff::Tariff;
-use domain::meter::MeterMeasure;
 
+use domain::meter::PricingInput;
 use rust_decimal::Decimal;
 
-pub fn price(tariff: &Tariff, smart_meter: &[MeterMeasure]) -> Result<Decimal, PricingError> {
-    if smart_meter.is_empty() {
+pub fn price(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Decimal, PricingError> {
+    if pricing_input.is_empty() {
         return Err(PricingError::NoData);
     };
 
-    let days = if let (Some(first), Some(last)) = (smart_meter.first(), smart_meter.last()) {
-        max((last.utc_start - first.utc_start).num_days(), 1)
-    } else {
-        0
-    };
+    let supply_charge = tariff.supply_rate() * Decimal::from(pricing_input.days());
 
-    let supply_charge = tariff.supply_rate() * Decimal::from(days);
-
-    let import = smart_meter.iter().try_fold(Decimal::ZERO, |acc, x| {
-        let v = tariff.rate_at(x.utc_start)?;
-        Ok::<Decimal, PricingError>(acc + x.import * v)
-    })?;
+    let import = pricing_input
+        .readings()
+        .iter()
+        .try_fold(Decimal::ZERO, |acc, x| {
+            let v = tariff.rate_at(x.local.hour_minute)?;
+            Ok::<Decimal, PricingError>(acc + x.meter.import * v)
+        })?;
+    // dbg!("import {}", import);
     Ok(import + supply_charge)
 }
 
 #[cfg(test)]
 mod tests {
 
-    use crate::models::HourMinute;
     use crate::tariff_factory::{TariffFactory, Window};
 
     use super::*;
+    use domain::{hour_minute::HourMinute, meter::MeterMeasure};
     use rust_decimal_macros::dec;
 
     use chrono::{TimeZone, Utc};
+    use std::str::FromStr;
+    use chrono_tz::Tz;
+
 
     #[test]
     fn test_time_of_use_across_midnight() {
@@ -66,7 +65,12 @@ mod tests {
         ];
 
         // 10 * 0.4 (peak) + 10 * 0.2 (off-peak) + 1.0 (supply, 1 day) = 7.0
-        assert_eq!(price(&tariff, &smart_meter).unwrap(), dec!(7.0));
+
+        let tz = Tz::from_str("Australia/Sydney").unwrap();
+        let pricing_input = PricingInput::new(tz, &smart_meter);
+
+        
+        assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(5.0));
     }
 
     #[test]
@@ -79,7 +83,10 @@ mod tests {
 
         let flat_tariff = TariffFactory::flat(dec!(0.2), dec!(1.0)).unwrap();
 
-        assert_eq!(price(&flat_tariff, &smart_meter).unwrap(), dec!(3));
+
+        let tz = Tz::from_str("Australia/Sydney").unwrap();
+        let pricing_input = PricingInput::new(tz, &smart_meter);
+        assert_eq!(price(&flat_tariff, &pricing_input).unwrap(), dec!(3));
     }
 
     #[test]
@@ -87,9 +94,11 @@ mod tests {
         let tariff = TariffFactory::flat(dec!(0.2), dec!(1.0)).unwrap();
 
         let smart_meter: Vec<MeterMeasure> = vec![];
+        let tz = Tz::from_str("Australia/Sydney").unwrap();
+        let pricing_input = PricingInput::new(tz, &smart_meter);
 
         assert!(matches!(
-            price(&tariff, &smart_meter),
+            price(&tariff, &pricing_input),
             Err(PricingError::NoData)
         ));
     }

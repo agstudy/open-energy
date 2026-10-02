@@ -1,9 +1,9 @@
-use bill_pricer::models::HourMinute;
 use bill_pricer::pricer::price;
 use bill_pricer::tariff::{Tariff, TariffRaw};
 use bill_pricer::tariff_factory::{TariffFactory, Window};
 use clap::{Parser, Subcommand};
-use domain::meter::merge_import_export;
+use domain::HourMinute;
+use domain::meter::{PricingInput, merge_import_export};
 use rust_decimal::Decimal;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -12,6 +12,8 @@ use anyhow::Context;
 use anyhow::Result as AnyResult;
 use meter_parser::Nem12Parser;
 use std::io::BufReader;
+use chrono_tz::Tz;
+use std::str::FromStr;
 
 #[derive(Parser)]
 #[command(name = "Energy Tool")]
@@ -68,10 +70,11 @@ enum Commands {
 
         #[command(subcommand)]
         tariff: TariffCmd,
+
+        #[arg(long)]
+        tz: String
     },
 }
-
-
 
 impl TryFrom<TariffCmd> for Tariff {
     type Error = anyhow::Error;
@@ -107,8 +110,8 @@ fn main() -> AnyResult<()> {
         Commands::Parse { file, verbose } => {
             run_parse(&file, verbose)?;
         }
-        Commands::Price { file, tariff } => {
-            let bill = price_file(&file, tariff.try_into()?)?;
+        Commands::Price { file, tariff, tz } => {
+            let bill = price_file(&file, tariff.try_into()?, Tz::from_str(&tz)?)?;
             println!("Bill is : {}", bill);
         }
     }
@@ -135,13 +138,14 @@ fn parse_tariff_file(path: &Path) -> AnyResult<Tariff> {
     Tariff::try_from(tariff_raw).context("Failed to load tariff")
 }
 
-fn price_file(path: &Path, tariff: Tariff) -> AnyResult<Decimal> {
-
+fn price_file(path: &Path, tariff: Tariff, tz:Tz) -> AnyResult<Decimal> {
     eprintln!("--- Pricing NEM12 smart meter ---");
     let parser = parse_file(path).context("Failed to parse Nem12 file")?;
     let smart_meter = merge_import_export(&parser.import(), &parser.export());
 
-    Ok(price(&tariff, &smart_meter)?)
+    let pricing_input = PricingInput::new(tz, &smart_meter);
+
+    Ok(price(&tariff, &pricing_input)?)
 }
 
 fn run_parse(path: &Path, verbose: bool) -> AnyResult<()> {
