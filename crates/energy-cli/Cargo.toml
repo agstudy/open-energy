@@ -11,7 +11,8 @@ rust_decimal_macros = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
 meter-parser = { path = "../meter-parser" }
 bill-pricer = { path = "../bill-pricer" }
 domain = { path = "../../domain" }

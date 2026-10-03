@@ -1,7 +1,8 @@
 use bitflags::bitflags;
+use chrono::Weekday;
 use serde::{Deserialize, Serialize};
 
-use super::hour_minute::HourMinute;
+use domain::hour_minute::HourMinute;
 
 bitflags! {
 #[derive(Serialize, Deserialize, Debug,PartialEq, Clone, Copy)]
@@ -14,6 +15,24 @@ pub struct WeekDays: u8 {
         const FRI = 0b0010000;
         const SAT = 0b0100000;
         const SUN = 0b1000000;
+    }
+}
+
+fn weekday_to_bitmask(weekday: &Weekday) -> WeekDays {
+    match weekday {
+        Weekday::Mon => WeekDays::MON,
+        Weekday::Tue => WeekDays::TUE,
+        Weekday::Wed => WeekDays::WED,
+        Weekday::Thu => WeekDays::THU,
+        Weekday::Fri => WeekDays::FRI,
+        Weekday::Sat => WeekDays::SAT,
+        Weekday::Sun => WeekDays::SUN,
+    }
+}
+
+impl WeekDays {
+    pub fn has(&self, weekday: &Weekday) -> bool {
+        self.contains(weekday_to_bitmask(&weekday))
     }
 }
 

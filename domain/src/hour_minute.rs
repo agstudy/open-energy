@@ -17,6 +17,8 @@ pub struct HourMinute {
 #[derive(Debug)]
 pub struct InvalidHourMinute(u32, u32);
 
+impl std::error::Error for InvalidHourMinute {}
+
 impl TryFrom<HourMinuteRaw> for HourMinute {
     type Error = InvalidHourMinute;
 
@@ -68,18 +70,22 @@ impl HourMinute {
     pub const MAX_HOUR: u32 = 23;
 
     pub fn new(hour: u32, minute: u32) -> Result<Self, InvalidHourMinute> {
-        if (0..=59).contains(&minute) && (0..=23).contains(&hour) {
+        if (0..=Self::MAX_MINUTE).contains(&minute) && (0..=Self::MAX_HOUR).contains(&hour) {
             Ok(HourMinute { hour, minute })
         } else {
             Err(InvalidHourMinute(hour, minute))
         }
     }
+
+    pub(crate) fn new_unchecked(hour: u32, minute: u32) -> Self {
+        HourMinute { hour, minute }
+    }
     /// Returns the previous minute, wrapping from 00:00 to 23:59.
     pub fn prev(self) -> HourMinute {
         if self.minute == 0 {
             HourMinute {
-                hour: (self.hour + 23) % 24,
-                minute: 59,
+                hour: (self.hour + Self::MAX_HOUR) % 24,
+                minute: Self::MAX_MINUTE,
             }
         } else {
             HourMinute {

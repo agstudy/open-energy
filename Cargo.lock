@@ -96,6 +96,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "chrono",
+ "chrono-tz",
  "domain",
  "rust_decimal",
  "rust_decimal_macros",
@@ -305,8 +306,11 @@ name = "domain"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "chrono-tz",
  "rust_decimal",
  "rust_decimal_macros",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -315,6 +319,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bill-pricer",
+ "chrono",
+ "chrono-tz",
  "clap",
  "domain",
  "meter-parser",

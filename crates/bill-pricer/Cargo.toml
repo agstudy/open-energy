@@ -12,4 +12,6 @@ serde_json = { workspace = true }
 
 bitflags = { workspace = true }
 chrono = { workspace = true }
+chrono-tz = { workspace = true }
+
 domain = { path = "../../domain" }

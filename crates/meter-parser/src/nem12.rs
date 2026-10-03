@@ -1,9 +1,9 @@
 use chrono::{DateTime, Duration, Utc};
+use log::warn;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::collections::HashMap;
 use std::str::FromStr;
-use log::{warn};
 
 use crate::models::{
     MeterState, Nem12_300, ParserError, ReadingQuality, SmartMeterType, UnitOfMeasure,

@@ -19,6 +19,10 @@ fn parse_fuzzy_date(date_str: &str) -> Result<NaiveDate, ParserError> {
     Err(ParserError::InvalidTimestamp)
 }
 
+// NEM12 timestamps use NEM market time: fixed UTC+10, no daylight saving,
+// wherever the household is. Brisbane is only a stand-in for that clock
+// (Queensland has no DST)
+
 pub fn parse_date(date_str: &str) -> Result<DateTime<Utc>, ParserError> {
     let naive_date = parse_fuzzy_date(date_str)?;
 
