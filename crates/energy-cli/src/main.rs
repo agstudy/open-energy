@@ -10,9 +10,9 @@ use std::path::{Path, PathBuf};
 // Import your library crates
 use anyhow::Context;
 use anyhow::Result as AnyResult;
+use chrono_tz::Tz;
 use meter_parser::Nem12Parser;
 use std::io::BufReader;
-use chrono_tz::Tz;
 use std::str::FromStr;
 
 #[derive(Parser)]
@@ -72,7 +72,7 @@ enum Commands {
         tariff: TariffCmd,
 
         #[arg(long)]
-        tz: String
+        tz: String,
     },
 }
 
@@ -138,7 +138,7 @@ fn parse_tariff_file(path: &Path) -> AnyResult<Tariff> {
     Tariff::try_from(tariff_raw).context("Failed to load tariff")
 }
 
-fn price_file(path: &Path, tariff: Tariff, tz:Tz) -> AnyResult<Decimal> {
+fn price_file(path: &Path, tariff: Tariff, tz: Tz) -> AnyResult<Decimal> {
     eprintln!("--- Pricing NEM12 smart meter ---");
     let parser = parse_file(path).context("Failed to parse Nem12 file")?;
     let smart_meter = merge_import_export(&parser.import(), &parser.export());

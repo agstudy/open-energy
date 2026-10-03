@@ -32,9 +32,8 @@ mod tests {
     use rust_decimal_macros::dec;
 
     use chrono::{TimeZone, Utc};
-    use std::str::FromStr;
     use chrono_tz::Tz;
-
+    use std::str::FromStr;
 
     #[test]
     fn test_time_of_use_across_midnight() {
@@ -69,7 +68,6 @@ mod tests {
         let tz = Tz::from_str("Australia/Sydney").unwrap();
         let pricing_input = PricingInput::new(tz, &smart_meter);
 
-        
         assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(5.0));
     }
 
@@ -82,7 +80,6 @@ mod tests {
         }];
 
         let flat_tariff = TariffFactory::flat(dec!(0.2), dec!(1.0)).unwrap();
-
 
         let tz = Tz::from_str("Australia/Sydney").unwrap();
         let pricing_input = PricingInput::new(tz, &smart_meter);

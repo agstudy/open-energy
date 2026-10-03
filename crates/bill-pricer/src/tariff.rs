@@ -40,7 +40,6 @@ pub struct RatePeriod {
 
 impl RatePeriod {
     pub fn applies_at(&self, at: &HourMinute) -> bool {
-
         self.time_band.start() <= *at && *at <= self.time_band.end()
     }
 
@@ -113,7 +112,6 @@ pub enum TariffError {
 
 impl Tariff {
     pub fn rate_at(&self, at_hm: HourMinute) -> Result<Decimal, TariffError> {
-
         let mut matches = self.import_tariff.iter().filter(|p| p.applies_at(&at_hm));
         match (matches.next(), matches.next()) {
             (None, _) => Err(TariffError::NoMatchingPeriod(at_hm)),

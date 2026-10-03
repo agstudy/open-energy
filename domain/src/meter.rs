@@ -1,8 +1,6 @@
 use chrono::{Datelike, NaiveDate, Timelike, Weekday};
 use chrono_tz::Tz;
-use std::{
-    collections::{BTreeMap, HashSet}
-};
+use std::collections::{BTreeMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
