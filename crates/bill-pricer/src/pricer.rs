@@ -15,7 +15,7 @@ pub fn price(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Decimal, P
         .readings()
         .iter()
         .try_fold(Decimal::ZERO, |acc, x| {
-            let v = tariff.rate_at(x.local.hour_minute)?;
+            let v = tariff.rate_at(x.local.hour_minute, x.local.weekday)?;
             Ok::<Decimal, PricingError>(acc + x.meter.import * v)
         })?;
     // dbg!("import {}", import);

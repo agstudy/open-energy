@@ -1,5 +1,6 @@
 use std::cmp::min;
 
+use chrono::Weekday;
 use domain::HourMinute;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -39,8 +40,13 @@ pub struct RatePeriod {
 }
 
 impl RatePeriod {
-    pub fn applies_at(&self, at: &HourMinute) -> bool {
-        self.time_band.start() <= *at && *at <= self.time_band.end()
+    pub fn applies_at(&self, at: &HourMinute, weekday: &Weekday) -> bool {
+        let in_range = self.time_band.start() <= *at && *at <= self.time_band.end();
+        let on_day = self
+            .time_band
+            .days_of_week()
+            .map_or(true, |value| value.has(&weekday));
+        in_range && on_day
     }
 
     pub fn new(rate: Decimal, time_band: TimeBand) -> Self {
@@ -111,8 +117,11 @@ pub enum TariffError {
 }
 
 impl Tariff {
-    pub fn rate_at(&self, at_hm: HourMinute) -> Result<Decimal, TariffError> {
-        let mut matches = self.import_tariff.iter().filter(|p| p.applies_at(&at_hm));
+    pub fn rate_at(&self, at_hm: HourMinute, weekday: Weekday) -> Result<Decimal, TariffError> {
+        let mut matches = self
+            .import_tariff
+            .iter()
+            .filter(|p| p.applies_at(&at_hm, &weekday));
         match (matches.next(), matches.next()) {
             (None, _) => Err(TariffError::NoMatchingPeriod(at_hm)),
             (Some(period), None) => period
