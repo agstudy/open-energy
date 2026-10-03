@@ -43,12 +43,13 @@ Parse a NEM12 file and compute the total bill against a tariff. The
 tariff is chosen via a nested subcommand: `flat` or `tou`.
 
 ```bash
-energy-cli price --file <PATH> <flat|tou> [tariff options]
+energy-cli price --file <PATH> --tz <TIMEZONE> <flat|tou|from-file> [tariff options]
 ```
 
 | Flag            | Short | Description                        |
-|------------------|-------|-------------------------------------|
-| `--file <PATH>`  | `-f`  | Path to the NEM12 CSV file (required) |
+|------------------ |-------|-------------------------------------|
+| `--file <PATH>`   | `-f`  | Path to the NEM12 CSV file (required) |
+|`--tz <TIMEZONE>`	|`-t`	 |Timezone for pricing (e.g. Australia/Sydney) (required)|
 
 #### `flat` — single flat rate
 
@@ -84,6 +85,15 @@ Times must be in `HH:MM` 24-hour format (`00:00`–`23:59`); an invalid
 format or out-of-range hour/minute is rejected with an error message
 rather than silently accepted.
 
+
+##  `from-file` — load a tariff from a JSON file
+```bash
+energy-cli price --file data/raw/good_smart_meter.csv --tz Australia/Sydney \
+  from-file --tariff-file tariffs/my_tariff.json
+  ``
+|Flag	|Description|
+|`--tariff-file` |<PATH>	Path to a JSON tariff definition (required)|
+
 ## Status
 
 This is an early (v0) CLI built alongside the open-energy workspace.
@@ -94,6 +104,9 @@ Known limitations:
 - Tariffs are specified entirely via CLI flags; no support yet for
   loading a tariff from a file.
 - No demand-charge (peak kW) support yet.
+- The JSON tariff format for `from-file` is not yet documented or
+stabilised — it maps directly to the TariffRaw type in
+bill-pricer.
 
 ## Examples
 
@@ -102,14 +115,20 @@ Known limitations:
 energy-cli parse --file data/raw/good_smart_meter.csv --verbose
 
 # Price it against a flat rate
-energy-cli price --file data/raw/good_smart_meter.csv flat --rate 0.20 --supply 1.00
+energy-cli price --file data/raw/good_smart_meter.csv --tz Australia/Sydney \
+  flat --rate 0.20 --supply 1.00
 
 # Price it against time-of-use
-energy-cli price --file data/raw/good_smart_meter.csv tou \
-  --peak 0.30 --start-peak 14:00 \
+energy-cli price --file data/raw/good_smart_meter.csv --tz Australia/Sydney \
+  tou --peak 0.30 --start-peak 14:00 \
   --off-peak 0.15 --start-off-peak 22:00 \
   --supply 0.20
+
+# Price it against a tariff loaded from a file
+energy-cli price --file data/raw/good_smart_meter.csv --tz Australia/Sydney \
+  from-file --tariff-file tariffs/my_tariff.json
+
 ```
 
-Run `energy-cli <command> --help` or `energy-cli price <flat|tou> --help`
+Run `energy-cli <command> --help` or `energy-cli price <flat|tou|from-file> --help`
 for the full generated usage for any command.
