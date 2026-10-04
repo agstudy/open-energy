@@ -5,6 +5,7 @@ use rust_decimal_macros::dec;
 use std::collections::HashMap;
 use std::str::FromStr;
 
+use crate::IntervalMinutes;
 use crate::models::{
     MeterState, Nem12_300, ParserError, ReadingQuality, SmartMeterType, UnitOfMeasure,
 };
@@ -28,6 +29,7 @@ fn parse_200_to_state(row: &csv::StringRecord) -> Result<MeterState, ParserError
     let interval_minutes = interval_minutes_str
         .parse::<u32>()
         .map_err(|_| ParserError::InvalidFormat(8))?;
+    let interval_minutes = IntervalMinutes::new(interval_minutes)?;
 
     // Determine the type based on the first character of the suffix
     // and the Unit of Measure (UOM)
@@ -66,7 +68,7 @@ fn transform_300(state: &MeterState, record: &csv::StringRecord) -> Result<Nem12
     let utc_start = parse_date(date_str)?;
 
     // 1. Calculate how many values we need
-    let expected_count = (MINUTES_PER_DAY / state.interval_minutes) as usize;
+    let expected_count = (MINUTES_PER_DAY / state.interval_minutes.get()) as usize;
 
     // 2. Identify the Quality code index if it exists in the "Standard" position
     // record.len() >= expected_count + 7 implies index (len - 5) is safe.
@@ -159,7 +161,7 @@ impl Nem12Parser {
         let Some(meter) = &self.meter_state else {
             return vec![];
         };
-        let frequency = meter.interval_minutes;
+        let frequency = meter.interval_minutes.get();
         self.results
             .iter()
             .filter(|x| x.meter_type == serie_type)
@@ -201,7 +203,7 @@ mod tests {
 
         assert_eq!(state.nmi, "6203230232");
         assert_eq!(state.uom, UnitOfMeasure::KiloWattHour);
-        assert_eq!(state.interval_minutes, 30);
+        assert_eq!(state.interval_minutes.get(), 30);
     }
 
     #[test]
@@ -239,7 +241,7 @@ mod tests {
         // Use if let to access the inner fields safely
         if let Some(meter) = &parser.meter_state {
             assert_eq!(meter.uom, UnitOfMeasure::KiloWattHour);
-            assert_eq!(meter.interval_minutes, 60);
+            assert_eq!(meter.interval_minutes.get(), 60);
             assert_eq!(meter.nmi, "540423685");
         } else {
             panic!("MeterState was None!");
