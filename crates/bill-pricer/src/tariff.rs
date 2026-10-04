@@ -45,7 +45,7 @@ impl RatePeriod {
         let on_day = self
             .time_band
             .days_of_week()
-            .map_or(true, |value| value.has(&weekday));
+            .is_none_or(|value| value.has(weekday));
         in_range && on_day
     }
 

@@ -91,6 +91,10 @@ impl PricingInput {
             .collect::<HashSet<NaiveDate>>()
             .len()
     }
+
+    pub fn len(&self) -> usize {
+        self.measures.len()
+    }
 }
 
 /// Merges import and export series by timestamp. Export-only intervals are

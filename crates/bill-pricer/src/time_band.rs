@@ -32,7 +32,7 @@ fn weekday_to_bitmask(weekday: &Weekday) -> WeekDays {
 
 impl WeekDays {
     pub fn has(&self, weekday: &Weekday) -> bool {
-        self.contains(weekday_to_bitmask(&weekday))
+        self.contains(weekday_to_bitmask(weekday))
     }
 }
 
