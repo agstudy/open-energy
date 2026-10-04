@@ -10,6 +10,8 @@ use rust_decimal_macros::dec;
 pub enum ParserError {
     #[error("Invalid format to get meter state at {0}")]
     InvalidFormat(u32),
+    #[error("Invalid meter interval minutes {0}")]
+    InvalidInterval(u32),
     #[error("Unknown Timestamp format")]
     InvalidTimestamp,
     #[error("No Meter state data")]
@@ -85,12 +87,27 @@ impl UnitOfMeasure {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IntervalMinutes(u32);
+
+impl IntervalMinutes {
+    pub fn new(v: u32) -> Result<Self, ParserError> {
+        if v == 0 || v % 5 != 0 {
+            return Err(ParserError::InvalidInterval(v));
+        }
+        Ok(Self(v))
+    }
+
+    pub fn get(self) -> u32 { self.0 }
+}
+
 #[derive(Debug, Clone)]
 pub struct MeterState {
     pub nmi: String,
     pub suffix: String,
     pub meter_type: SmartMeterType,
-    pub interval_minutes: u32,
+    pub interval_minutes: IntervalMinutes,
     pub uom: UnitOfMeasure,
 }
 
