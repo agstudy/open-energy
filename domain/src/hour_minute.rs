@@ -56,7 +56,7 @@ impl TryFrom<&str> for HourMinute {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let err = || InvalidStrHourMinute(value.into());
-        let (h, m) = value.split_once(":").ok_or_else(err)?;
+        let (h, m) = value.split_once(':').ok_or_else(err)?;
 
         let hour = u32::from_str(h).map_err(|_| err())?;
         let minute = u32::from_str(m).map_err(|_| err())?;
@@ -81,6 +81,7 @@ impl HourMinute {
         HourMinute { hour, minute }
     }
     /// Returns the previous minute, wrapping from 00:00 to 23:59.
+    #[must_use]
     pub fn prev(self) -> HourMinute {
         if self.minute == 0 {
             HourMinute {
@@ -95,6 +96,7 @@ impl HourMinute {
         }
     }
 
+    #[must_use]
     pub fn split_midnight(self, end: HourMinute) -> Vec<(HourMinute, HourMinute)> {
         if self >= end {
             vec![
@@ -112,6 +114,7 @@ impl HourMinute {
         }
     }
 
+    #[must_use]
     pub fn minute_of_day(&self) -> u32 {
         self.hour * 60 + self.minute
     }
@@ -120,10 +123,12 @@ impl HourMinute {
         Self::new(m / 60, m % 60)
     }
 
+    #[must_use]
     pub const fn min() -> Self {
         Self { hour: 0, minute: 0 }
     }
 
+    #[must_use]
     pub const fn max() -> Self {
         Self {
             hour: Self::MAX_HOUR,

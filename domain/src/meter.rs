@@ -14,6 +14,7 @@ pub struct MeterMeasure {
 }
 
 impl MeterMeasure {
+    #[must_use]
     pub fn new(utc_start: DateTime<Utc>, import: Decimal) -> Self {
         MeterMeasure {
             utc_start,
@@ -22,6 +23,7 @@ impl MeterMeasure {
         }
     }
 
+    #[must_use]
     pub fn to_local(&self, tz: Tz) -> LocalMeasure {
         let local = self.utc_start.with_timezone(&tz);
         LocalMeasure {
@@ -65,6 +67,7 @@ fn create_readings(tz: Tz, values: &[MeterMeasure]) -> Vec<Reading> {
 }
 
 impl PricingInput {
+    #[must_use]
     pub fn new(tz: Tz, values: &[MeterMeasure]) -> Self {
         Self {
             timezone: tz,
@@ -72,18 +75,22 @@ impl PricingInput {
         }
     }
 
+    #[must_use]
     pub fn readings(&self) -> &[Reading] {
         self.measures.as_slice()
     }
 
+    #[must_use]
     pub fn timezone(&self) -> Tz {
         self.timezone
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.measures.is_empty()
     }
 
+    #[must_use]
     pub fn days(&self) -> usize {
         self.measures
             .iter()
@@ -92,6 +99,7 @@ impl PricingInput {
             .len()
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.measures.len()
     }
@@ -101,6 +109,7 @@ impl PricingInput {
 /// treated as zero-import (e.g. solar export with no simultaneous grid draw).
 /// Import-only intervals (no export reading) are the common case pre-solar-install
 /// and are left with `export: None`.
+#[must_use]
 pub fn merge_import_export(
     import: &[(DateTime<Utc>, Decimal)],
     export: &[(DateTime<Utc>, Decimal)],
