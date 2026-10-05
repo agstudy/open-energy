@@ -27,8 +27,8 @@ impl TariffFactory {
             .build()
     }
     pub fn time_of_use(
-        peak: Window,
-        off_peak: Window,
+        peak: &Window,
+        off_peak: &Window,
         supply_rate: Decimal,
     ) -> Result<Tariff, TariffError> {
         let mut builder = TariffBuilder::default().daily_supply(supply_rate);

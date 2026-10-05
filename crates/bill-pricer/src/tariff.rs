@@ -40,7 +40,8 @@ pub struct RatePeriod {
 }
 
 impl RatePeriod {
-    pub fn applies_at(&self, at: &HourMinute, weekday: &Weekday) -> bool {
+    #[must_use]
+    pub fn applies_at(&self, at: &HourMinute, weekday: Weekday) -> bool {
         let in_range = self.time_band.start() <= *at && *at <= self.time_band.end();
         let on_day = self
             .time_band
@@ -49,6 +50,7 @@ impl RatePeriod {
         in_range && on_day
     }
 
+    #[must_use]
     pub fn new(rate: Decimal, time_band: TimeBand) -> Self {
         RatePeriod {
             rates: vec![RateBlock {
@@ -121,7 +123,7 @@ impl Tariff {
         let mut matches = self
             .import_tariff
             .iter()
-            .filter(|p| p.applies_at(&at_hm, &weekday));
+            .filter(|p| p.applies_at(&at_hm, weekday));
 
         match (matches.next(), matches.next()) {
             (None, _) => Err(TariffError::NoMatchingPeriod(at_hm)),
@@ -145,6 +147,7 @@ impl Tariff {
         }
         Ok(())
     }
+    #[must_use]
     pub fn supply_rate(&self) -> Decimal {
         self.supply_rate
     }
@@ -166,7 +169,7 @@ fn group_per_weekday(rps: &[RatePeriod]) -> [(Weekday, Vec<&RatePeriod>); 7] {
             .filter(|rp| {
                 rp.time_band
                     .days_of_week()
-                    .is_none_or(|days| days.has(&weekday))
+                    .is_none_or(|days| days.has(weekday))
             })
             .collect();
         day_rps.sort_by_key(|rp| rp.time_band.start());
@@ -192,7 +195,7 @@ fn validate_tariff(day: Weekday, rps: &[&RatePeriod]) -> Result<(), TariffError>
     let hm = |val| from_minute_of_day_unchecked(val);
 
     let mut cursor: u32 = 0;
-    for rp in rps.iter() {
+    for rp in rps {
         check_tier_order(&rp.rates)?;
 
         let start = rp.time_band.start().minute_of_day();
@@ -253,6 +256,7 @@ impl Default for RatePeriodBuilder {
 }
 
 impl RatePeriodBuilder {
+    #[must_use]
     pub fn rates(mut self, rates: &[(Decimal, Decimal)]) -> Self {
         self.rates = rates
             .iter()
@@ -274,6 +278,7 @@ impl RatePeriodBuilder {
         Ok(self)
     }
 
+    #[must_use]
     pub fn build(self) -> RatePeriod {
         RatePeriod {
             rates: self.rates,
@@ -291,6 +296,7 @@ pub struct TariffBuilder {
 }
 
 impl TariffBuilder {
+    #[must_use]
     pub fn daily_supply(mut self, rate: Decimal) -> Self {
         self.supply_rate = rate;
         self
