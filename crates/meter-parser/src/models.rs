@@ -78,6 +78,7 @@ impl FromStr for UnitOfMeasure {
 
 impl UnitOfMeasure {
     // This is the "Magic" for your math
+    #[must_use]
     pub fn scaling_factor(&self) -> Decimal {
         match self {
             Self::KiloWattHour => dec!(1.0),
@@ -99,6 +100,7 @@ impl IntervalMinutes {
         Ok(Self(v))
     }
 
+    #[must_use]
     pub fn get(self) -> u32 {
         self.0
     }
@@ -124,7 +126,7 @@ pub enum SmartMeterType {
 
 impl std::fmt::Display for SmartMeterType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 

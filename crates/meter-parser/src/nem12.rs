@@ -38,7 +38,7 @@ fn parse_200_to_state(row: &csv::StringRecord) -> Result<MeterState, ParserError
 
     let meter_type = match (first_char, uom) {
         // Active Energy (kWh)
-        ('E', UnitOfMeasure::KiloWattHour) | ('N', UnitOfMeasure::KiloWattHour) => {
+        ('E' | 'N', UnitOfMeasure::KiloWattHour) => {
             SmartMeterType::KwhImport
         }
         ('B', UnitOfMeasure::KiloWattHour) => SmartMeterType::KwhExport,
@@ -101,6 +101,7 @@ fn transform_300(state: &MeterState, record: &csv::StringRecord) -> Result<Nem12
 }
 
 impl Nem12Parser {
+    #[must_use]
     pub fn new() -> Self {
         Nem12Parser {
             meter_state: None,
@@ -147,6 +148,7 @@ impl Nem12Parser {
         Ok(())
     }
 
+    #[must_use]
     pub fn summary(&self) -> HashMap<SmartMeterType, Decimal> {
         self.results.iter().fold(HashMap::new(), |mut acc, row| {
             let row_total: Decimal = row.measures.iter().sum();
@@ -168,7 +170,7 @@ impl Nem12Parser {
             .flat_map(|x| {
                 x.measures.iter().enumerate().map(|(i, &measure)| {
                     (
-                        x.utc_start + Duration::minutes(i as i64 * frequency as i64),
+                        x.utc_start + Duration::minutes(i as i64 * i64::from(frequency)),
                         measure,
                     )
                 })
@@ -176,9 +178,11 @@ impl Nem12Parser {
             .collect()
     }
 
+    #[must_use]
     pub fn import(&self) -> Vec<(DateTime<Utc>, Decimal)> {
         self.ts_measures(SmartMeterType::KwhImport)
     }
+    #[must_use]
     pub fn export(&self) -> Vec<(DateTime<Utc>, Decimal)> {
         self.ts_measures(SmartMeterType::KwhExport)
     }
