@@ -38,15 +38,14 @@ fn parse_200_to_state(row: &csv::StringRecord) -> Result<MeterState, ParserError
 
     let meter_type = match (first_char, uom) {
         // Active Energy (kWh)
-        ('E' | 'N', UnitOfMeasure::KiloWattHour) => SmartMeterType::KwhImport,
         ('B', UnitOfMeasure::KiloWattHour | UnitOfMeasure::WattHour) => SmartMeterType::KwhExport,
+        ('E' | 'N', UnitOfMeasure::KiloWattHour) | ('E', UnitOfMeasure::WattHour) => {
+            SmartMeterType::KwhImport
+        }
 
         // Reactive Energy (kVARh)
         ('Q', UnitOfMeasure::KiloVarHour) => SmartMeterType::KvarhImport,
         ('K', UnitOfMeasure::KiloVarHour) => SmartMeterType::KvarhExport,
-
-        // Fallback for cases where UOM is WattHours but suffix is E/B
-        ('E', UnitOfMeasure::WattHour) => SmartMeterType::KwhImport,
 
         _ => SmartMeterType::Unknown,
     };

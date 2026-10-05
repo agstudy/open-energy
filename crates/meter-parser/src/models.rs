@@ -91,7 +91,7 @@ impl FromStr for UnitOfMeasure {
 
 impl UnitOfMeasure {
     // This is the "Magic" for your math
-    #[must_use]
+    
     pub fn scaling_factor(&self) -> Result<Decimal, ParserError> {
         match self {
             Self::KiloWattHour => Ok(dec!(1.0)),
