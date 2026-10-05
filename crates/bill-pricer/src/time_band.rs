@@ -79,6 +79,11 @@ impl TryFrom<TimeBandRow> for TimeBand {
 }
 
 impl TimeBand {
+    /// Creates the time band
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TariffError::InvalidTimeBand`] if `start` is after `end`,
     pub fn new(
         start: HourMinute,
         end: HourMinute,
