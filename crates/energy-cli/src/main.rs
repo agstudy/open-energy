@@ -111,7 +111,7 @@ fn main() -> AnyResult<()> {
             run_parse(&file, verbose)?;
         }
         Commands::Price { file, tariff, tz } => {
-            let bill = price_file(&file, tariff.try_into()?, Tz::from_str(&tz)?)?;
+            let bill = price_file(&file, &tariff.try_into()?, Tz::from_str(&tz)?)?;
             println!("Bill is : {bill}");
         }
     }
@@ -138,14 +138,14 @@ fn parse_tariff_file(path: &Path) -> AnyResult<Tariff> {
     Tariff::try_from(tariff_raw).context("Failed to load tariff")
 }
 
-fn price_file(path: &Path, tariff: Tariff, tz: Tz) -> AnyResult<Decimal> {
+fn price_file(path: &Path, tariff: &Tariff, tz: Tz) -> AnyResult<Decimal> {
     eprintln!("--- Pricing NEM12 smart meter ---");
     let parser = parse_file(path).context("Failed to parse Nem12 file")?;
     let smart_meter = merge_import_export(&parser.import(), &parser.export());
 
     let pricing_input = PricingInput::new(tz, &smart_meter);
 
-    Ok(price(&tariff, &pricing_input)?)
+    Ok(price(tariff, &pricing_input)?)
 }
 
 fn run_parse(path: &Path, verbose: bool) -> AnyResult<()> {
