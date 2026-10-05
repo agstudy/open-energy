@@ -4,6 +4,13 @@ use crate::tariff::Tariff;
 use domain::meter::PricingInput;
 use rust_decimal::Decimal;
 
+/// Prices the given input against a tariff.
+///
+/// # Errors
+///
+/// Returns [`PricingError`] if the tariff does not fully cover the
+/// pricing input's time range, or if any day is not covered by
+/// non-overlapping bands.
 pub fn price(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Decimal, PricingError> {
     if pricing_input.is_empty() {
         return Err(PricingError::NoData);

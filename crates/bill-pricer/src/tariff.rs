@@ -120,10 +120,7 @@ pub enum TariffError {
 
 impl Tariff {
     pub fn rate_at(&self, at_hm: HourMinute, weekday: Weekday) -> Result<Decimal, TariffError> {
-        let mut matches = self
-            .import
-            .iter()
-            .filter(|p| p.applies_at(&at_hm, weekday));
+        let mut matches = self.import.iter().filter(|p| p.applies_at(&at_hm, weekday));
 
         match (matches.next(), matches.next()) {
             (None, _) => Err(TariffError::NoMatchingPeriod(at_hm)),
@@ -136,6 +133,10 @@ impl Tariff {
         }
     }
 
+    /// # Errors
+    ///
+    /// Returns [`TariffError`] if the tariff fails validation — for example
+    /// if bands overlap or a day is not fully covered.
     pub fn validate(&self) -> Result<(), TariffError> {
         for (day, rps) in group_per_weekday(&self.import) {
             validate_tariff(day, &rps)?;
