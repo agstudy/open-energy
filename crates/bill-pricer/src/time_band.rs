@@ -8,13 +8,13 @@ bitflags! {
 #[derive(Serialize, Deserialize, Debug,PartialEq, Clone, Copy)]
 pub struct WeekDays: u8 {
 
-        const MON = 0b0000001;
-        const TUE = 0b0000010;
-        const WED = 0b0000100;
-        const THU = 0b0001000;
-        const FRI = 0b0010000;
-        const SAT = 0b0100000;
-        const SUN = 0b1000000;
+        const MON = 0b000_0001;
+        const TUE = 0b000_0010;
+        const WED = 0b000_0100;
+        const THU = 0b000_1000;
+        const FRI = 0b001_0000;
+        const SAT = 0b010_0000;
+        const SUN = 0b100_0000;
     }
 }
 
