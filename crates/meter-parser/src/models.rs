@@ -93,7 +93,7 @@ pub struct IntervalMinutes(u32);
 
 impl IntervalMinutes {
     pub fn new(v: u32) -> Result<Self, ParserError> {
-        if v == 0 || !v.is_multiple_of(5) {
+        if v == 0 || 1440 % v != 0 {
             return Err(ParserError::InvalidInterval(v));
         }
         Ok(Self(v))

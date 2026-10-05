@@ -283,7 +283,10 @@ mod tests {
                 .build()
         };
 
-        assert!(matches!(&flat_tariff(), Err(TariffError::Gap(chrono::Weekday::Sat, _))));
+        assert!(matches!(
+            &flat_tariff(),
+            Err(TariffError::Gap(chrono::Weekday::Sat, _))
+        ));
     }
     #[test]
     fn test_alldays_weekend_band() {
@@ -310,5 +313,20 @@ mod tests {
         };
 
         assert!(matches!(&flat_tariff(), Err(TariffError::Overlap(_, _))));
+    }
+
+    #[test]
+    fn test_multi_days() {
+        let smart_meter = generate_smart_meter(&GeneratorConfig {
+            //end: "2026-01-08 00:00:00".into(),
+            ..Default::default()
+        });
+
+        let tariff = TariffFactory::flat(dec!(0.0), dec!(1)).unwrap();
+
+        let tz = Tz::from_str("Australia/Sydney").unwrap();
+        let pricing_input = PricingInput::new(tz, &smart_meter);
+
+        assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(365));
     }
 }
