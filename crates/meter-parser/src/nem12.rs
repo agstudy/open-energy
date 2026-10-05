@@ -164,9 +164,9 @@ impl Nem12Parser {
             .iter()
             .filter(|x| x.meter_type == serie_type)
             .flat_map(|x| {
-                x.measures.iter().enumerate().map(|(index, &measure)| {
+                x.measures.iter().zip(0_i64..).map(|(&measure, index)| {
                     (
-                        x.utc_start + Duration::minutes(index as i64 * i64::from(frequency)),
+                        x.utc_start + Duration::minutes(index * i64::from(frequency)),
                         measure,
                     )
                 })
