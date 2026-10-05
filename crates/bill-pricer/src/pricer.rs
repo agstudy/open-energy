@@ -7,7 +7,7 @@ use rust_decimal::Decimal;
 pub fn price(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Decimal, PricingError> {
     if pricing_input.is_empty() {
         return Err(PricingError::NoData);
-    };
+    }
 
     let supply_charge = tariff.supply_rate() * Decimal::from(pricing_input.days());
 
@@ -103,11 +103,11 @@ mod tests {
     fn test_time_of_use_across_midnight() {
         let time_zone = "Australia/Sydney";
         let tariff = TariffFactory::time_of_use(
-            Window {
+            &Window {
                 rate: dec!(0.4),
                 start: HourMinute::new(16, 0).unwrap(),
             }, // peak: 16:00–20:59
-            Window {
+            &Window {
                 rate: dec!(0.2),
                 start: HourMinute::new(21, 0).unwrap(),
             }, // off-peak: 21:00–15:59
