@@ -18,7 +18,7 @@ pub struct WeekDays: u8 {
     }
 }
 
-fn weekday_to_bitmask(weekday: &Weekday) -> WeekDays {
+fn weekday_to_bitmask(weekday: Weekday) -> WeekDays {
     match weekday {
         Weekday::Mon => WeekDays::MON,
         Weekday::Tue => WeekDays::TUE,
@@ -31,13 +31,16 @@ fn weekday_to_bitmask(weekday: &Weekday) -> WeekDays {
 }
 
 impl WeekDays {
-    pub fn has(&self, weekday: &Weekday) -> bool {
+    #[must_use]
+    pub fn has(&self, weekday: Weekday) -> bool {
         self.contains(weekday_to_bitmask(weekday))
     }
+    #[must_use]
     pub fn weekend() -> WeekDays {
         WeekDays::SAT | WeekDays::SUN
     }
 
+    #[must_use]
     pub fn working_days() -> WeekDays {
         WeekDays::MON | WeekDays::TUE | WeekDays::WED | WeekDays::THU | WeekDays::FRI
     }
@@ -91,17 +94,21 @@ impl TimeBand {
             })
         }
     }
+    #[must_use]
     pub fn start(&self) -> HourMinute {
         self.start
     }
+    #[must_use]
     pub fn end(&self) -> HourMinute {
         self.end
     }
 
+    #[must_use]
     pub fn days_of_week(&self) -> Option<WeekDays> {
         self.days_of_week
     }
 
+    #[must_use]
     pub fn full_day() -> Self {
         Self {
             start: HourMinute::min(),
