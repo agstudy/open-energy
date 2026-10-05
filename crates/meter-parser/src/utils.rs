@@ -19,9 +19,17 @@ fn parse_fuzzy_date(date_str: &str) -> Result<NaiveDate, ParserError> {
     Err(ParserError::InvalidTimestamp)
 }
 
-// NEM12 timestamps use NEM market time: fixed UTC+10, no daylight saving,
-// wherever the household is. Brisbane is only a stand-in for that clock
-// (Queensland has no DST)
+
+
+/// Parses a NEM12 timestamp (NEM market time, fixed UTC+10) into UTC.
+/// 
+/// NEM12 timestamps use NEM market time: fixed UTC+10, no daylight saving,
+/// wherever the household is. Brisbane is only a stand-in for that clock
+/// (Queensland has no DST)
+///
+/// # Errors
+///
+/// Returns [`ParserError::InvalidTimestamp`] if the string doesn't match the NEM12 date format.
 
 pub fn parse_date(date_str: &str) -> Result<DateTime<Utc>, ParserError> {
     let naive_date = parse_fuzzy_date(date_str)?;

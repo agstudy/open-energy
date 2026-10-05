@@ -91,13 +91,13 @@ impl FromStr for UnitOfMeasure {
 
 impl UnitOfMeasure {
     // This is the "Magic" for your math
-    
+
     pub fn scaling_factor(&self) -> Result<Decimal, ParserError> {
         match self {
             Self::KiloWattHour => Ok(dec!(1.0)),
             Self::WattHour => Ok(dec!(0.001)),
             Self::MegaWattHour => Ok(dec!(1000.0)),
-            a => Err(ParserError::InvalidUnitOfMeasure(a.to_string()))
+            a => Err(ParserError::InvalidUnitOfMeasure(a.to_string())),
         }
     }
 }
@@ -106,6 +106,11 @@ impl UnitOfMeasure {
 pub struct IntervalMinutes(u32);
 
 impl IntervalMinutes {
+    /// Builds an interval from a number of minutes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParserError::InvalidInterval`] if `v` is zero or not divider of 1440.
     pub fn new(v: u32) -> Result<Self, ParserError> {
         if v == 0 || 1440 % v != 0 {
             return Err(ParserError::InvalidInterval(v));
