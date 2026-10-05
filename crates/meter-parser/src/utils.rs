@@ -30,7 +30,6 @@ fn parse_fuzzy_date(date_str: &str) -> Result<NaiveDate, ParserError> {
 /// # Errors
 ///
 /// Returns [`ParserError::InvalidTimestamp`] if the string doesn't match the NEM12 date format.
-
 pub fn parse_date(date_str: &str) -> Result<DateTime<Utc>, ParserError> {
     let naive_date = parse_fuzzy_date(date_str)?;
 

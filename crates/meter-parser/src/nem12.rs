@@ -114,7 +114,6 @@ impl Nem12Parser {
     /// Returns an error if the record leaves the parser without valid meter context,
     /// for example a malformed `200` row ([`ParserError::InvalidFormat`]) or a data row before any `200`
     /// ([`ParserError::NoMeterData`]).
-
     pub fn handle_record(&mut self, record: &csv::StringRecord) -> Result<(), ParserError> {
         match record.get(0) {
             Some("200") => {
@@ -139,7 +138,6 @@ impl Nem12Parser {
     ///
     /// Returns [`ParserError::Csv`] (with the line number) for unreadable CSV, or any error
     /// from [`Self::handle_record`].
-
     pub fn parse_stream<R: std::io::Read>(&mut self, reader: R) -> Result<(), ParserError> {
         let mut rdr = csv::ReaderBuilder::new()
             .has_headers(false)

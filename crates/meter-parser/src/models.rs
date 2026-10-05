@@ -90,8 +90,12 @@ impl FromStr for UnitOfMeasure {
 }
 
 impl UnitOfMeasure {
-    // This is the "Magic" for your math
-
+    /// Returns the factor that converts this unit into kilowatt-hours (kWh).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParserError::InvalidUnitOfMeasure`] if this unit is not a
+    /// real-energy unit with a known kWh conversion.
     pub fn scaling_factor(&self) -> Result<Decimal, ParserError> {
         match self {
             Self::KiloWattHour => Ok(dec!(1.0)),
