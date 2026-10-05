@@ -99,7 +99,9 @@ impl IntervalMinutes {
         Ok(Self(v))
     }
 
-    pub fn get(self) -> u32 { self.0 }
+    pub fn get(self) -> u32 {
+        self.0
+    }
 }
 
 #[derive(Debug, Clone)]
