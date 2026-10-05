@@ -38,10 +38,8 @@ fn parse_200_to_state(row: &csv::StringRecord) -> Result<MeterState, ParserError
 
     let meter_type = match (first_char, uom) {
         // Active Energy (kWh)
-        ('E' | 'N', UnitOfMeasure::KiloWattHour) => {
-            SmartMeterType::KwhImport
-        }
-        ('B', UnitOfMeasure::KiloWattHour) => SmartMeterType::KwhExport,
+        ('E' | 'N', UnitOfMeasure::KiloWattHour) => SmartMeterType::KwhImport,
+        ('B', UnitOfMeasure::KiloWattHour | UnitOfMeasure::WattHour) => SmartMeterType::KwhExport,
 
         // Reactive Energy (kVARh)
         ('Q', UnitOfMeasure::KiloVarHour) => SmartMeterType::KvarhImport,
@@ -49,7 +47,6 @@ fn parse_200_to_state(row: &csv::StringRecord) -> Result<MeterState, ParserError
 
         // Fallback for cases where UOM is WattHours but suffix is E/B
         ('E', UnitOfMeasure::WattHour) => SmartMeterType::KwhImport,
-        ('B', UnitOfMeasure::WattHour) => SmartMeterType::KwhExport,
 
         _ => SmartMeterType::Unknown,
     };
@@ -80,7 +77,7 @@ fn transform_300(state: &MeterState, record: &csv::StringRecord) -> Result<Nem12
     let quality = ReadingQuality::from_str(quality_code)?;
     let values_to_take = expected_count;
 
-    let factor = state.uom.scaling_factor();
+    let factor = state.uom.scaling_factor()?;
     let values: Vec<Decimal> = record
         .iter()
         .skip(2)
@@ -168,9 +165,9 @@ impl Nem12Parser {
             .iter()
             .filter(|x| x.meter_type == serie_type)
             .flat_map(|x| {
-                x.measures.iter().enumerate().map(|(i, &measure)| {
+                x.measures.iter().enumerate().map(|(index, &measure)| {
                     (
-                        x.utc_start + Duration::minutes(i as i64 * i64::from(frequency)),
+                        x.utc_start + Duration::minutes(index as i64 * i64::from(frequency)),
                         measure,
                     )
                 })

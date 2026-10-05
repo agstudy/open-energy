@@ -61,6 +61,19 @@ pub enum UnitOfMeasure {
     VoltAmpereHour, // vAh
 }
 
+impl std::fmt::Display for UnitOfMeasure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::KiloWattHour => "kWh",
+            Self::WattHour => "Wh",
+            Self::MegaWattHour => "MWh",
+            Self::KiloVarHour => "kVArh",
+            Self::VoltAmpereHour => "VAh",
+        };
+        f.write_str(s)
+    }
+}
+
 impl FromStr for UnitOfMeasure {
     type Err = ParserError;
     // Converts any input string to our Enum
@@ -79,12 +92,12 @@ impl FromStr for UnitOfMeasure {
 impl UnitOfMeasure {
     // This is the "Magic" for your math
     #[must_use]
-    pub fn scaling_factor(&self) -> Decimal {
+    pub fn scaling_factor(&self) -> Result<Decimal, ParserError> {
         match self {
-            Self::KiloWattHour => dec!(1.0),
-            Self::WattHour => dec!(0.001),
-            Self::MegaWattHour => dec!(1000.0),
-            _ => dec!(1.0),
+            Self::KiloWattHour => Ok(dec!(1.0)),
+            Self::WattHour => Ok(dec!(0.001)),
+            Self::MegaWattHour => Ok(dec!(1000.0)),
+            a => Err(ParserError::InvalidUnitOfMeasure(a.to_string()))
         }
     }
 }
