@@ -122,6 +122,7 @@ impl Tariff {
             .import_tariff
             .iter()
             .filter(|p| p.applies_at(&at_hm, &weekday));
+        
         match (matches.next(), matches.next()) {
             (None, _) => Err(TariffError::NoMatchingPeriod(at_hm)),
             (Some(period), None) => period
