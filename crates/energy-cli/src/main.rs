@@ -112,7 +112,7 @@ fn main() -> AnyResult<()> {
         }
         Commands::Price { file, tariff, tz } => {
             let bill = price_file(&file, tariff.try_into()?, Tz::from_str(&tz)?)?;
-            println!("Bill is : {}", bill);
+            println!("Bill is : {bill}");
         }
     }
     Ok(())
@@ -154,11 +154,11 @@ fn run_parse(path: &Path, verbose: bool) -> AnyResult<()> {
     eprintln!("Success! Parsed {} days.", parser.results.len());
     if verbose {
         for result in &parser.results {
-            println!("{:#?}", result);
+            println!("{result:#?}");
         }
     }
     for (key, value) in &parser.summary() {
-        println!("{}: {}", key, value);
+        println!("{key}: {value}");
     }
     Ok(())
 }
