@@ -28,8 +28,8 @@ mod tests {
     use crate::{
         tariff_factory::{TariffFactory, Window},
         tests_utils::{
-            generate_smart_meter, get_tou_tariff, str_to_native_date, str_to_native_datetime,
-            utc_from_local,
+            GeneratorConfig, generate_smart_meter, get_tou_tariff, str_to_native_date,
+            str_to_native_datetime, utc_from_local,
         },
     };
 
@@ -164,8 +164,7 @@ mod tests {
     #[test]
     fn test_day_count() {
         let timezone = "Australia/Sydney";
-        let smart_meter =
-            generate_smart_meter("2026-01-01 00:00:00", "2027-01-01 00:00:00", 30, timezone);
+        let smart_meter = generate_smart_meter(&GeneratorConfig::default());
         let tz = Tz::from_str(timezone).unwrap();
         let pricing_input = PricingInput::new(tz, &smart_meter);
 
@@ -176,8 +175,7 @@ mod tests {
     #[test]
     fn test_singular_dates_count() {
         let timezone = "Australia/Sydney";
-        let smart_meter =
-            generate_smart_meter("2026-01-01 00:00:00", "2027-01-01 00:00:00", 30, timezone);
+        let smart_meter = generate_smart_meter(&GeneratorConfig::default());
 
         let tz = Tz::from_str(timezone).unwrap();
         let pricing_input = PricingInput::new(tz, &smart_meter);
@@ -202,17 +200,15 @@ mod tests {
 
     #[test]
     fn test_flat() {
-        let smart_meter = vec![MeterMeasure {
-            utc_start: Utc::now(),
-            import: dec!(10.0),
-            export: None,
-        }];
-
-        let flat_tariff = TariffFactory::flat(dec!(0.2), dec!(1.0)).unwrap();
+        let smart_meter = generate_smart_meter(&GeneratorConfig {
+            end: "2026-01-02 00:00:00".into(),..Default::default()
+        });
+        let flat_tariff = TariffFactory::flat(dec!(1), dec!(1.0)).unwrap();
 
         let tz = Tz::from_str("Australia/Sydney").unwrap();
         let pricing_input = PricingInput::new(tz, &smart_meter);
-        assert_eq!(price(&flat_tariff, &pricing_input).unwrap(), dec!(3));
+        //24*0.2
+        assert_eq!(price(&flat_tariff, &pricing_input).unwrap(), dec!(25));
     }
 
     #[test]
