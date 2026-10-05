@@ -119,6 +119,14 @@ pub enum TariffError {
 }
 
 impl Tariff {
+    /// Returns the applicable rate for `(hour, minute)` on the given `weekday`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TariffError::NoMatchingPeriod`] if no rate period covers
+    /// `at_hm` on `weekday`, [`TariffError::EmptyRates`] if the matching
+    /// period has no rate blocks, or [`TariffError::Overlap`] if more than
+    /// one period matches.
     pub fn rate_at(&self, at_hm: HourMinute, weekday: Weekday) -> Result<Decimal, TariffError> {
         let mut matches = self.import.iter().filter(|p| p.applies_at(&at_hm, weekday));
 
@@ -135,8 +143,10 @@ impl Tariff {
 
     /// # Errors
     ///
-    /// Returns [`TariffError`] if the tariff fails validation — for example
-    /// if bands overlap or a day is not fully covered.
+    /// Returns [`TariffError::Gap`] if a day is not fully covered,
+    /// [`TariffError::Overlap`] if bands overlap, [`TariffError::TierOrder`]
+    /// if tier thresholds are not strictly increasing from zero, or
+    /// [`TariffError::EmptyRates`] if a period has no rate blocks.
     pub fn validate(&self) -> Result<(), TariffError> {
         for (day, rps) in group_per_weekday(&self.import) {
             validate_tariff(day, &rps)?;
@@ -269,6 +279,12 @@ impl RatePeriodBuilder {
         self
     }
 
+    /// Sets the time band for the rate period being built.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TariffError::InvalidTimeBand`] if `start` is after `end`,
+    /// or if the band is otherwise rejected by [`TimeBand::new`].
     pub fn time_band(
         mut self,
         start: HourMinute,
@@ -302,7 +318,14 @@ impl TariffBuilder {
         self.supply_rate = rate;
         self
     }
-
+    /// Adds an import rate period using the given builder closure.
+    ///
+    /// Overlap and coverage are not checked here; they are validated by
+    /// [`TariffBuilder::build`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TariffError`] if `f` returns an error.
     pub fn rate_period<F>(mut self, f: F) -> Result<Self, TariffError>
     where
         F: FnOnce(RatePeriodBuilder) -> Result<RatePeriodBuilder, TariffError>,
@@ -313,6 +336,14 @@ impl TariffBuilder {
         Ok(self)
     }
 
+    /// Adds an export (feed-in) rate period using the given builder closure.
+    ///
+    /// Overlap and coverage are not checked here; they are validated by
+    /// [`TariffBuilder::build`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TariffError`] if `f` returns an error.
     pub fn export_rate_period<F>(mut self, f: F) -> Result<Self, TariffError>
     where
         F: FnOnce(RatePeriodBuilder) -> Result<RatePeriodBuilder, TariffError>,
@@ -324,7 +355,16 @@ impl TariffBuilder {
 
         Ok(self)
     }
-
+    /// Finalises and returns the built [`Tariff`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TariffError`] if validation fails — for example
+    /// [`TariffError::Gap`] if a day is not fully covered,
+    /// [`TariffError::Overlap`] if bands overlap,
+    /// [`TariffError::TierOrder`] if tier thresholds are not strictly
+    /// increasing from zero, or [`TariffError::EmptyRates`] if a period
+    /// has no rate blocks.
     pub fn build(self) -> Result<Tariff, TariffError> {
         let tariff = Tariff {
             import: self.import_tariff,
