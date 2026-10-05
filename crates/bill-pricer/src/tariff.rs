@@ -249,7 +249,7 @@ pub struct RatePeriodBuilder {
 impl Default for RatePeriodBuilder {
     fn default() -> Self {
         Self {
-            rates: Default::default(),
+            rates: Vec::default(),
             time_band: TimeBand::full_day(),
         }
     }
