@@ -80,7 +80,7 @@ pub struct TariffRaw {
 impl TryFrom<TariffRaw> for Tariff {
     type Error = TariffError;
     fn try_from(raw: TariffRaw) -> Result<Self, TariffError> {
-        let mut tariff = Tariff {
+        let tariff = Tariff {
             import_tariff: raw.import_tariff,
             export_tariff: raw.export_tariff,
             supply_rate: raw.supply_rate,
@@ -102,12 +102,12 @@ pub enum PricingError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum TariffError {
-    #[error("bands leave a gap starting at {0}")]
-    Gap(HourMinute),
+    #[error("bands leave a gap starting at day {0} at {1}")]
+    Gap(Weekday, HourMinute),
     #[error("There is no matching rate period covering: {0}")]
     NoMatchingPeriod(HourMinute),
     #[error("bands overlap at {0}")]
-    Overlap(HourMinute),
+    Overlap(Weekday, HourMinute),
     #[error("tier thresholds out of order")]
     TierOrder,
     #[error("Missing rates")]
@@ -122,7 +122,7 @@ impl Tariff {
             .import_tariff
             .iter()
             .filter(|p| p.applies_at(&at_hm, &weekday));
-        
+
         match (matches.next(), matches.next()) {
             (None, _) => Err(TariffError::NoMatchingPeriod(at_hm)),
             (Some(period), None) => period
@@ -130,14 +130,18 @@ impl Tariff {
                 .first()
                 .ok_or(TariffError::EmptyRates)
                 .map(|b| b.rate),
-            (Some(_), Some(_)) => Err(TariffError::Overlap(at_hm)),
+            (Some(_), Some(_)) => Err(TariffError::Overlap(weekday, at_hm)),
         }
     }
 
-    pub fn validate(&mut self) -> Result<(), TariffError> {
-        validate_tariff(&mut self.import_tariff)?;
-        if let Some(export) = &mut self.export_tariff {
-            validate_tariff(export)?;
+    pub fn validate(&self) -> Result<(), TariffError> {
+        for (day, rps) in group_per_weekday(&self.import_tariff) {
+            validate_tariff(day, &rps)?;
+        }
+        if let Some(export) = &self.export_tariff {
+            for (day, rps) in group_per_weekday(export) {
+                validate_tariff(day, &rps)?;
+            }
         }
         Ok(())
     }
@@ -146,11 +150,33 @@ impl Tariff {
     }
 }
 
+fn group_per_weekday(rps: &[RatePeriod]) -> [(Weekday, Vec<&RatePeriod>); 7] {
+    [
+        Weekday::Mon,
+        Weekday::Tue,
+        Weekday::Wed,
+        Weekday::Thu,
+        Weekday::Fri,
+        Weekday::Sat,
+        Weekday::Sun,
+    ]
+    .map(|weekday| {
+        let mut day_rps: Vec<&RatePeriod> = rps
+            .iter()
+            .filter(|rp| {
+                rp.time_band
+                    .days_of_week()
+                    .is_none_or(|days| days.has(&weekday))
+            })
+            .collect();
+        day_rps.sort_by_key(|rp| rp.time_band.start());
+        (weekday, day_rps)
+    })
+}
 /// Validate that a set of rate periods fully covers a day with no overlaps
 /// and monotonic tier thresholds.
 ///
 /// ```text
-/// 1. sort tp by s_i                      -- O(n log n)
 /// 2. cursor ← 0
 /// 3. for each (s_i, e_i) in sorted order:
 ///      check_tier_order(rates_i)?
@@ -160,8 +186,10 @@ impl Tariff {
 /// 4. if cursor ≠ 1440: return Gap(cursor)
 /// 5. return Ok
 /// ```
-fn validate_tariff(rps: &mut [RatePeriod]) -> Result<(), TariffError> {
-    rps.sort_by_key(|rp| rp.time_band.start());
+fn validate_tariff(day: Weekday, rps: &[&RatePeriod]) -> Result<(), TariffError> {
+    // rps.sort_by_key(|rp| rp.time_band.start());
+
+    let hm = |val| from_minute_of_day_unchecked(val);
 
     let mut cursor: u32 = 0;
     for rp in rps.iter() {
@@ -171,19 +199,15 @@ fn validate_tariff(rps: &mut [RatePeriod]) -> Result<(), TariffError> {
         let end = rp.time_band.end().minute_of_day();
 
         if start > cursor {
-            return Err(TariffError::Gap(from_minute_of_day_unchecked(cursor)));
+            return Err(TariffError::Gap(day, hm(cursor)));
         } else if start < cursor {
-            return Err(TariffError::Overlap(from_minute_of_day_unchecked(min(
-                cursor, 1439,
-            ))));
+            return Err(TariffError::Overlap(day, hm(min(cursor, 1439))));
         }
         cursor = end + 1;
     }
 
     if cursor != 1440 {
-        return Err(TariffError::Gap(from_minute_of_day_unchecked(min(
-            cursor, 1439,
-        ))));
+        return Err(TariffError::Gap(day, hm(min(cursor, 1439))));
     }
 
     Ok(())
@@ -295,7 +319,7 @@ impl TariffBuilder {
     }
 
     pub fn build(self) -> Result<Tariff, TariffError> {
-        let mut tariff = Tariff {
+        let tariff = Tariff {
             import_tariff: self.import_tariff,
             export_tariff: self.export_tariff,
             supply_rate: self.supply_rate,
@@ -399,7 +423,7 @@ mod tests {
             .unwrap()
             .build();
 
-        assert!(matches!(tariff, Err(TariffError::Gap(_))));
+        assert!(matches!(tariff, Err(TariffError::Gap(_, _))));
     }
 
     #[test]
@@ -423,7 +447,7 @@ mod tests {
             .unwrap()
             .build();
 
-        assert!(matches!(tariff, Err(TariffError::Overlap(_))));
+        assert!(matches!(tariff, Err(TariffError::Overlap(_, _))));
     }
 
     #[test]

@@ -34,6 +34,13 @@ impl WeekDays {
     pub fn has(&self, weekday: &Weekday) -> bool {
         self.contains(weekday_to_bitmask(weekday))
     }
+    pub fn weekend() -> WeekDays {
+        WeekDays::SAT | WeekDays::SUN
+    }
+
+    pub fn working_days() -> WeekDays {
+        WeekDays::MON | WeekDays::TUE | WeekDays::WED | WeekDays::THU | WeekDays::FRI
+    }
 }
 
 #[derive(Deserialize)]
