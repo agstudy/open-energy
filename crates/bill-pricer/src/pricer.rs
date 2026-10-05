@@ -18,7 +18,6 @@ pub fn price(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Decimal, P
             let v = tariff.rate_at(x.local.hour_minute, x.local.weekday)?;
             Ok::<Decimal, PricingError>(acc + x.meter.import * v)
         })?;
-    // dbg!("import {}", import);
     Ok(import + supply_charge)
 }
 
@@ -26,6 +25,8 @@ pub fn price(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Decimal, P
 mod tests {
 
     use crate::{
+        WeekDays,
+        tariff::{TariffBuilder, TariffError},
         tariff_factory::{TariffFactory, Window},
         tests_utils::{
             GeneratorConfig, generate_smart_meter, get_tou_tariff, str_to_native_date,
@@ -201,7 +202,8 @@ mod tests {
     #[test]
     fn test_flat() {
         let smart_meter = generate_smart_meter(&GeneratorConfig {
-            end: "2026-01-02 00:00:00".into(),..Default::default()
+            end: "2026-01-02 00:00:00".into(),
+            ..Default::default()
         });
         let flat_tariff = TariffFactory::flat(dec!(1), dec!(1.0)).unwrap();
 
@@ -223,5 +225,90 @@ mod tests {
             price(&tariff, &pricing_input),
             Err(PricingError::NoData)
         ));
+    }
+
+    #[test]
+    fn test_weekend_weekday_both_full_day() {
+        // 1 week meter
+        let smart_meter = generate_smart_meter(&GeneratorConfig {
+            end: "2026-01-08 00:00:00".into(),
+            ..Default::default()
+        });
+        let flat_rate = dec!(0.2);
+
+        let flat_tariff = || -> Result<Tariff, TariffError> {
+            TariffBuilder::default()
+                .daily_supply(dec!(1.0))
+                .rate_period(|s| {
+                    s.rates(&[(flat_rate, dec!(0))]).time_band(
+                        HourMinute::min(),
+                        HourMinute::max(),
+                        Some(WeekDays::working_days()),
+                    )
+                })?
+                .rate_period(|s| {
+                    s.rates(&[(dec!(0.5), dec!(0))]).time_band(
+                        HourMinute::min(),
+                        HourMinute::max(),
+                        Some(WeekDays::weekend()),
+                    )
+                })?
+                .build()
+        };
+        assert!(matches!(&flat_tariff(), Ok(_)));
+
+        let tz = Tz::from_str("Australia/Sydney").unwrap();
+        let pricing_input = PricingInput::new(tz, &smart_meter);
+        // (0.2*5+0.5*2)*24 +7*1 = 2*24+7 = 55
+        assert_eq!(
+            price(&flat_tariff().unwrap(), &pricing_input).unwrap(),
+            dec!(55)
+        );
+    }
+
+    #[test]
+    fn test_only_weekday_full_day() {
+        let flat_rate = dec!(0.2);
+
+        let flat_tariff = || -> Result<Tariff, TariffError> {
+            TariffBuilder::default()
+                .daily_supply(dec!(1.0))
+                .rate_period(|s| {
+                    s.rates(&[(flat_rate, dec!(0))]).time_band(
+                        HourMinute::min(),
+                        HourMinute::max(),
+                        Some(WeekDays::working_days()),
+                    )
+                })?
+                .build()
+        };
+
+        assert!(matches!(&flat_tariff(), Err(TariffError::Gap(chrono::Weekday::Sat, _))));
+    }
+    #[test]
+    fn test_alldays_weekend_band() {
+        let flat_rate = dec!(0.2);
+
+        let flat_tariff = || -> Result<Tariff, TariffError> {
+            TariffBuilder::default()
+                .daily_supply(dec!(1.0))
+                .rate_period(|s| {
+                    s.rates(&[(flat_rate, dec!(0))]).time_band(
+                        HourMinute::min(),
+                        HourMinute::max(),
+                        None,
+                    )
+                })?
+                .rate_period(|s| {
+                    s.rates(&[(flat_rate, dec!(0))]).time_band(
+                        HourMinute::from_str("16:00").unwrap(),
+                        HourMinute::from_str("23:59").unwrap(),
+                        Some(WeekDays::weekend()),
+                    )
+                })?
+                .build()
+        };
+
+        assert!(matches!(&flat_tariff(), Err(TariffError::Overlap(_, _))));
     }
 }
