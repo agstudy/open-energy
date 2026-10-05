@@ -65,8 +65,8 @@ impl RatePeriod {
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(try_from = "TariffRaw")]
 pub struct Tariff {
-    import_tariff: Vec<RatePeriod>,
-    export_tariff: Option<Vec<RatePeriod>>,
+    import: Vec<RatePeriod>,
+    export: Option<Vec<RatePeriod>>,
     discount: Option<Vec<Discount>>,
     supply_rate: Decimal,
 }
@@ -83,8 +83,8 @@ impl TryFrom<TariffRaw> for Tariff {
     type Error = TariffError;
     fn try_from(raw: TariffRaw) -> Result<Self, TariffError> {
         let tariff = Tariff {
-            import_tariff: raw.import_tariff,
-            export_tariff: raw.export_tariff,
+            import: raw.import_tariff,
+            export: raw.export_tariff,
             supply_rate: raw.supply_rate,
             discount: raw.discount,
         };
@@ -121,7 +121,7 @@ pub enum TariffError {
 impl Tariff {
     pub fn rate_at(&self, at_hm: HourMinute, weekday: Weekday) -> Result<Decimal, TariffError> {
         let mut matches = self
-            .import_tariff
+            .import
             .iter()
             .filter(|p| p.applies_at(&at_hm, weekday));
 
@@ -137,10 +137,10 @@ impl Tariff {
     }
 
     pub fn validate(&self) -> Result<(), TariffError> {
-        for (day, rps) in group_per_weekday(&self.import_tariff) {
+        for (day, rps) in group_per_weekday(&self.import) {
             validate_tariff(day, &rps)?;
         }
-        if let Some(export) = &self.export_tariff {
+        if let Some(export) = &self.export {
             for (day, rps) in group_per_weekday(export) {
                 validate_tariff(day, &rps)?;
             }
@@ -326,8 +326,8 @@ impl TariffBuilder {
 
     pub fn build(self) -> Result<Tariff, TariffError> {
         let tariff = Tariff {
-            import_tariff: self.import_tariff,
-            export_tariff: self.export_tariff,
+            import: self.import_tariff,
+            export: self.export_tariff,
             supply_rate: self.supply_rate,
             discount: self.discount,
         };
@@ -385,9 +385,9 @@ mod tests {
             .build()
             .unwrap();
 
-        assert_eq!(tariff.import_tariff[0].rates.len(), 2);
+        assert_eq!(tariff.import[0].rates.len(), 2);
         assert_eq!(
-            tariff.import_tariff[0].rates[1],
+            tariff.import[0].rates[1],
             RateBlock {
                 rate: dec!(0.2),
                 lower_band: dec!(1000)
@@ -478,7 +478,7 @@ mod tests {
             .build()
             .unwrap();
 
-        assert_eq!(tariff.export_tariff.unwrap().len(), 1);
+        assert_eq!(tariff.export.unwrap().len(), 1);
     }
 
     #[test]
