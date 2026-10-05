@@ -89,11 +89,11 @@ impl TryFrom<TariffCmd> for Tariff {
                 start_off_peak,
                 supply,
             } => Ok(TariffFactory::time_of_use(
-                Window {
+                &Window {
                     rate: peak,
                     start: start_peak,
                 },
-                Window {
+                &Window {
                     rate: off_peak,
                     start: start_off_peak,
                 },
