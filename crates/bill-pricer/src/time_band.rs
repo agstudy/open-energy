@@ -8,17 +8,17 @@ bitflags! {
 #[derive(Serialize, Deserialize, Debug,PartialEq, Clone, Copy)]
 pub struct WeekDays: u8 {
 
-        const MON = 0b0000001;
-        const TUE = 0b0000010;
-        const WED = 0b0000100;
-        const THU = 0b0001000;
-        const FRI = 0b0010000;
-        const SAT = 0b0100000;
-        const SUN = 0b1000000;
+        const MON = 0b000_0001;
+        const TUE = 0b000_0010;
+        const WED = 0b000_0100;
+        const THU = 0b000_1000;
+        const FRI = 0b001_0000;
+        const SAT = 0b010_0000;
+        const SUN = 0b100_0000;
     }
 }
 
-fn weekday_to_bitmask(weekday: &Weekday) -> WeekDays {
+fn weekday_to_bitmask(weekday: Weekday) -> WeekDays {
     match weekday {
         Weekday::Mon => WeekDays::MON,
         Weekday::Tue => WeekDays::TUE,
@@ -31,13 +31,16 @@ fn weekday_to_bitmask(weekday: &Weekday) -> WeekDays {
 }
 
 impl WeekDays {
-    pub fn has(&self, weekday: &Weekday) -> bool {
+    #[must_use]
+    pub fn has(&self, weekday: Weekday) -> bool {
         self.contains(weekday_to_bitmask(weekday))
     }
+    #[must_use]
     pub fn weekend() -> WeekDays {
         WeekDays::SAT | WeekDays::SUN
     }
 
+    #[must_use]
     pub fn working_days() -> WeekDays {
         WeekDays::MON | WeekDays::TUE | WeekDays::WED | WeekDays::THU | WeekDays::FRI
     }
@@ -76,6 +79,11 @@ impl TryFrom<TimeBandRow> for TimeBand {
 }
 
 impl TimeBand {
+    /// Creates the time band
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TariffError::InvalidTimeBand`] if `start` is after `end`,
     pub fn new(
         start: HourMinute,
         end: HourMinute,
@@ -91,17 +99,21 @@ impl TimeBand {
             })
         }
     }
+    #[must_use]
     pub fn start(&self) -> HourMinute {
         self.start
     }
+    #[must_use]
     pub fn end(&self) -> HourMinute {
         self.end
     }
 
+    #[must_use]
     pub fn days_of_week(&self) -> Option<WeekDays> {
         self.days_of_week
     }
 
+    #[must_use]
     pub fn full_day() -> Self {
         Self {
             start: HourMinute::min(),

@@ -39,11 +39,11 @@ pub fn get_tou_tariff(
     start_off_peak: &str,
 ) -> Tariff {
     TariffFactory::time_of_use(
-        Window {
+        &Window {
             rate: peak,
             start: start_peak.try_into().unwrap(),
         }, // peak: 16:00–20:59
-        Window {
+        &Window {
             rate: off_peak,
             start: start_off_peak.try_into().unwrap(),
         }, // off-peak: 21:00–15:59

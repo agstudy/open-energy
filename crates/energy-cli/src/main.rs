@@ -89,11 +89,11 @@ impl TryFrom<TariffCmd> for Tariff {
                 start_off_peak,
                 supply,
             } => Ok(TariffFactory::time_of_use(
-                Window {
+                &Window {
                     rate: peak,
                     start: start_peak,
                 },
-                Window {
+                &Window {
                     rate: off_peak,
                     start: start_off_peak,
                 },
@@ -111,8 +111,8 @@ fn main() -> AnyResult<()> {
             run_parse(&file, verbose)?;
         }
         Commands::Price { file, tariff, tz } => {
-            let bill = price_file(&file, tariff.try_into()?, Tz::from_str(&tz)?)?;
-            println!("Bill is : {}", bill);
+            let bill = price_file(&file, &tariff.try_into()?, Tz::from_str(&tz)?)?;
+            println!("Bill is : {bill}");
         }
     }
     Ok(())
@@ -138,14 +138,14 @@ fn parse_tariff_file(path: &Path) -> AnyResult<Tariff> {
     Tariff::try_from(tariff_raw).context("Failed to load tariff")
 }
 
-fn price_file(path: &Path, tariff: Tariff, tz: Tz) -> AnyResult<Decimal> {
+fn price_file(path: &Path, tariff: &Tariff, tz: Tz) -> AnyResult<Decimal> {
     eprintln!("--- Pricing NEM12 smart meter ---");
     let parser = parse_file(path).context("Failed to parse Nem12 file")?;
     let smart_meter = merge_import_export(&parser.import(), &parser.export());
 
     let pricing_input = PricingInput::new(tz, &smart_meter);
 
-    Ok(price(&tariff, &pricing_input)?)
+    Ok(price(tariff, &pricing_input)?)
 }
 
 fn run_parse(path: &Path, verbose: bool) -> AnyResult<()> {
@@ -154,11 +154,11 @@ fn run_parse(path: &Path, verbose: bool) -> AnyResult<()> {
     eprintln!("Success! Parsed {} days.", parser.results.len());
     if verbose {
         for result in &parser.results {
-            println!("{:#?}", result);
+            println!("{result:#?}");
         }
     }
     for (key, value) in &parser.summary() {
-        println!("{}: {}", key, value);
+        println!("{key}: {value}");
     }
     Ok(())
 }

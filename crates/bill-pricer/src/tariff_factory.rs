@@ -14,6 +14,13 @@ pub struct Window {
 }
 
 impl TariffFactory {
+    /// Builds a falt tariff with the given flat rate and daily supply rate.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TariffError`]: direct use of tariffbuilder
+    ///
+    /// 
     pub fn flat(flat_rate: Decimal, supply_rate: Decimal) -> Result<Tariff, TariffError> {
         TariffBuilder::default()
             .daily_supply(supply_rate)
@@ -26,9 +33,17 @@ impl TariffFactory {
             })?
             .build()
     }
+
+    /// Builds a time-of-use tariff with the given peak and off-peak windows
+    /// and daily supply rate.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TariffError`]: direct use of tariffbuilder
+    ///
     pub fn time_of_use(
-        peak: Window,
-        off_peak: Window,
+        peak: &Window,
+        off_peak: &Window,
         supply_rate: Decimal,
     ) -> Result<Tariff, TariffError> {
         let mut builder = TariffBuilder::default().daily_supply(supply_rate);

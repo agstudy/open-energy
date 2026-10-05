@@ -61,6 +61,19 @@ pub enum UnitOfMeasure {
     VoltAmpereHour, // vAh
 }
 
+impl std::fmt::Display for UnitOfMeasure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::KiloWattHour => "kWh",
+            Self::WattHour => "Wh",
+            Self::MegaWattHour => "MWh",
+            Self::KiloVarHour => "kVArh",
+            Self::VoltAmpereHour => "VAh",
+        };
+        f.write_str(s)
+    }
+}
+
 impl FromStr for UnitOfMeasure {
     type Err = ParserError;
     // Converts any input string to our Enum
@@ -77,13 +90,18 @@ impl FromStr for UnitOfMeasure {
 }
 
 impl UnitOfMeasure {
-    // This is the "Magic" for your math
-    pub fn scaling_factor(&self) -> Decimal {
+    /// Returns the factor that converts this unit into kilowatt-hours (kWh).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParserError::InvalidUnitOfMeasure`] if this unit is not a
+    /// real-energy unit with a known kWh conversion.
+    pub fn scaling_factor(&self) -> Result<Decimal, ParserError> {
         match self {
-            Self::KiloWattHour => dec!(1.0),
-            Self::WattHour => dec!(0.001),
-            Self::MegaWattHour => dec!(1000.0),
-            _ => dec!(1.0),
+            Self::KiloWattHour => Ok(dec!(1.0)),
+            Self::WattHour => Ok(dec!(0.001)),
+            Self::MegaWattHour => Ok(dec!(1000.0)),
+            a => Err(ParserError::InvalidUnitOfMeasure(a.to_string())),
         }
     }
 }
@@ -92,6 +110,11 @@ impl UnitOfMeasure {
 pub struct IntervalMinutes(u32);
 
 impl IntervalMinutes {
+    /// Builds an interval from a number of minutes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParserError::InvalidInterval`] if `v` is zero or not divider of 1440.
     pub fn new(v: u32) -> Result<Self, ParserError> {
         if v == 0 || 1440 % v != 0 {
             return Err(ParserError::InvalidInterval(v));
@@ -99,6 +122,7 @@ impl IntervalMinutes {
         Ok(Self(v))
     }
 
+    #[must_use]
     pub fn get(self) -> u32 {
         self.0
     }
@@ -124,7 +148,7 @@ pub enum SmartMeterType {
 
 impl std::fmt::Display for SmartMeterType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 

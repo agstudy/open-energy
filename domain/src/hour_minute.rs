@@ -56,7 +56,7 @@ impl TryFrom<&str> for HourMinute {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let err = || InvalidStrHourMinute(value.into());
-        let (h, m) = value.split_once(":").ok_or_else(err)?;
+        let (h, m) = value.split_once(':').ok_or_else(err)?;
 
         let hour = u32::from_str(h).map_err(|_| err())?;
         let minute = u32::from_str(m).map_err(|_| err())?;
@@ -68,7 +68,11 @@ impl TryFrom<&str> for HourMinute {
 impl HourMinute {
     pub const MAX_MINUTE: u32 = 59;
     pub const MAX_HOUR: u32 = 23;
-
+    // Builds an hour and minute pair.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InvalidHourMinute`] if `hour` is above 23 or `minute` is above 59.
     pub fn new(hour: u32, minute: u32) -> Result<Self, InvalidHourMinute> {
         if (0..=Self::MAX_MINUTE).contains(&minute) && (0..=Self::MAX_HOUR).contains(&hour) {
             Ok(HourMinute { hour, minute })
@@ -81,6 +85,7 @@ impl HourMinute {
         HourMinute { hour, minute }
     }
     /// Returns the previous minute, wrapping from 00:00 to 23:59.
+    #[must_use]
     pub fn prev(self) -> HourMinute {
         if self.minute == 0 {
             HourMinute {
@@ -95,6 +100,7 @@ impl HourMinute {
         }
     }
 
+    #[must_use]
     pub fn split_midnight(self, end: HourMinute) -> Vec<(HourMinute, HourMinute)> {
         if self >= end {
             vec![
@@ -112,18 +118,26 @@ impl HourMinute {
         }
     }
 
+    #[must_use]
     pub fn minute_of_day(&self) -> u32 {
         self.hour * 60 + self.minute
     }
-
+    
+    /// Builds a time of day from the number of minutes since midnight.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InvalidHourMinute`] if `m` is 1440 or more.
     pub fn from_minute_of_day(m: u32) -> Result<Self, InvalidHourMinute> {
         Self::new(m / 60, m % 60)
     }
 
+    #[must_use]
     pub const fn min() -> Self {
         Self { hour: 0, minute: 0 }
     }
 
+    #[must_use]
     pub const fn max() -> Self {
         Self {
             hour: Self::MAX_HOUR,

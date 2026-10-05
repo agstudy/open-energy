@@ -38,18 +38,14 @@ fn parse_200_to_state(row: &csv::StringRecord) -> Result<MeterState, ParserError
 
     let meter_type = match (first_char, uom) {
         // Active Energy (kWh)
-        ('E', UnitOfMeasure::KiloWattHour) | ('N', UnitOfMeasure::KiloWattHour) => {
+        ('B', UnitOfMeasure::KiloWattHour | UnitOfMeasure::WattHour) => SmartMeterType::KwhExport,
+        ('E' | 'N', UnitOfMeasure::KiloWattHour) | ('E', UnitOfMeasure::WattHour) => {
             SmartMeterType::KwhImport
         }
-        ('B', UnitOfMeasure::KiloWattHour) => SmartMeterType::KwhExport,
 
         // Reactive Energy (kVARh)
         ('Q', UnitOfMeasure::KiloVarHour) => SmartMeterType::KvarhImport,
         ('K', UnitOfMeasure::KiloVarHour) => SmartMeterType::KvarhExport,
-
-        // Fallback for cases where UOM is WattHours but suffix is E/B
-        ('E', UnitOfMeasure::WattHour) => SmartMeterType::KwhImport,
-        ('B', UnitOfMeasure::WattHour) => SmartMeterType::KwhExport,
 
         _ => SmartMeterType::Unknown,
     };
@@ -80,7 +76,7 @@ fn transform_300(state: &MeterState, record: &csv::StringRecord) -> Result<Nem12
     let quality = ReadingQuality::from_str(quality_code)?;
     let values_to_take = expected_count;
 
-    let factor = state.uom.scaling_factor();
+    let factor = state.uom.scaling_factor()?;
     let values: Vec<Decimal> = record
         .iter()
         .skip(2)
@@ -101,6 +97,7 @@ fn transform_300(state: &MeterState, record: &csv::StringRecord) -> Result<Nem12
 }
 
 impl Nem12Parser {
+    #[must_use]
     pub fn new() -> Self {
         Nem12Parser {
             meter_state: None,
@@ -108,6 +105,15 @@ impl Nem12Parser {
         }
     }
 
+    /// Processes one CSV record, updating the parser state.
+    ///
+    /// Malformed rows that can be skipped are logged as warnings and return `Ok`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the record leaves the parser without valid meter context,
+    /// for example a malformed `200` row ([`ParserError::InvalidFormat`]) or a data row before any `200`
+    /// ([`ParserError::NoMeterData`]).
     pub fn handle_record(&mut self, record: &csv::StringRecord) -> Result<(), ParserError> {
         match record.get(0) {
             Some("200") => {
@@ -126,6 +132,12 @@ impl Nem12Parser {
         }
     }
 
+    /// Reads NEM12 records from `reader` until the end of the stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParserError::Csv`] (with the line number) for unreadable CSV, or any error
+    /// from [`Self::handle_record`].
     pub fn parse_stream<R: std::io::Read>(&mut self, reader: R) -> Result<(), ParserError> {
         let mut rdr = csv::ReaderBuilder::new()
             .has_headers(false)
@@ -147,6 +159,7 @@ impl Nem12Parser {
         Ok(())
     }
 
+    #[must_use]
     pub fn summary(&self) -> HashMap<SmartMeterType, Decimal> {
         self.results.iter().fold(HashMap::new(), |mut acc, row| {
             let row_total: Decimal = row.measures.iter().sum();
@@ -166,9 +179,9 @@ impl Nem12Parser {
             .iter()
             .filter(|x| x.meter_type == serie_type)
             .flat_map(|x| {
-                x.measures.iter().enumerate().map(|(i, &measure)| {
+                x.measures.iter().zip(0_i64..).map(|(&measure, index)| {
                     (
-                        x.utc_start + Duration::minutes(i as i64 * frequency as i64),
+                        x.utc_start + Duration::minutes(index * i64::from(frequency)),
                         measure,
                     )
                 })
@@ -176,9 +189,11 @@ impl Nem12Parser {
             .collect()
     }
 
+    #[must_use]
     pub fn import(&self) -> Vec<(DateTime<Utc>, Decimal)> {
         self.ts_measures(SmartMeterType::KwhImport)
     }
+    #[must_use]
     pub fn export(&self) -> Vec<(DateTime<Utc>, Decimal)> {
         self.ts_measures(SmartMeterType::KwhExport)
     }
