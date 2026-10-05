@@ -18,8 +18,8 @@ fully or partially — by:
 - **Switching to the best electricity offer**, via bill calculation from real usage data — usable
   independently, or before/after an electrification project
 
-The project starts from the ground up: a solid, well-tested smart meter data parser is the
-foundation everything else builds on.
+The project starts from the ground up: a solid, well-tested smart meter data parser and a
+tariff-based bill calculator are the foundation everything else builds on.
 
 ## Why start with a parser
 
@@ -33,8 +33,17 @@ having accurate, typed usage data to work from.
 
 - **`meter-parser`** — parses NEM12 CSV files into typed Rust structures (meter readings, units
   of measure, reading quality, import/export classification).
-- **`energy-cli`** — a command-line tool for running the parser against a file and printing a
-  summary.
+- **`bill-pricer`** — prices meter readings against a tariff: flat and time-of-use rates,
+  weekday/weekend bands, daily supply charge, with validation that every day is fully covered
+  by non-overlapping bands. Tariffs can be built in code or loaded from JSON.
+- **`domain`** — shared types such as `HourMinute` and the localised pricing input.
+- **`energy-cli`** — a command-line tool for running the parser and pricer against a file.
+
+## Design notes
+
+NEM12 timestamps use NEM market time (fixed UTC+10, no daylight saving). Readings are stored in
+UTC and converted to the household's local time zone before tariff bands are applied, so
+daylight-saving days (23 or 25 hours) are priced correctly.
 
 ## Usage
 
@@ -54,9 +63,8 @@ KwhImport: 8614.51300
 
 After cloning, enable the repo's git hooks (blocks direct commits to `main`):
 
-   
 ```bash
- git config core.hooksPath scripts/hooks
+git config core.hooksPath scripts/hooks
 ```
 
 Run tests across the workspace:
@@ -73,15 +81,28 @@ cargo clippy --workspace -- -W clippy::pedantic
 
 Format:
 
+## Contributing
+
+Direct commits to main are blocked by the git hook described above; please work on a branch and open a pull request.
+
+Before opening a pull request, run:
+
 ```bash
 cargo fmt --all
+cargo clippy --workspace -- -W clippy::pedantic
+cargo test --workspace
 ```
 
-## Status
+## Status (Early stage)
 
-Early stage. Currently supports parsing NEM12 files and computing basic per-category totals
-(import/export energy). Planned, in rough order: tariff-based billing calculation, electricity
-offer comparison/switching, and modeling of solar, battery, heat pump, and EV solutions.
+**Working today**: NEM12 parsing, per-category totals, and bill calculation for flat,
+time-of-use and weekday/weekend tariffs with DST-aware local time.
+
+**In progress**: tiered rates, tax and currency handling, discounts, and pricing of export
+(feed-in) energy. Not yet supported: seasonal tariffs and demand charges.
+
+**Planned**, in rough order: electricity offer comparison/switching, then modeling of solar,
+battery, heat pump, and EV solutions.
 
 ## License
 
@@ -91,3 +112,8 @@ Licensed under either of:
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
 
 at your option.
+
+## AI usage
+
+I use AI assistants (Claude) for design discussions, code review and
+drafting GitHub issues. The code, tests and design decisions are my own.
