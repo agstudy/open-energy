@@ -1,6 +1,7 @@
 use crate::tariff::ConsumptionPeriod;
 use crate::tariff::PricingError;
 use crate::tariff::Tariff;
+use crate::tariff::TariffDirection;
 
 use chrono::Datelike;
 use chrono::NaiveDate;
@@ -8,37 +9,59 @@ use domain::meter::PricingInput;
 use rust_decimal::Decimal;
 
 struct Acc {
-    bill: Decimal,
-    cons: Decimal,
+    import_price: Decimal,
+    import_kwh: Decimal,
     prev_date: Option<NaiveDate>,
+    export_price: Decimal,
+    export_kwh: Decimal,
 }
 
-
-fn price_cumulative(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc, PricingError> {
+fn price_variable(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc, PricingError> {
     let import_cost = pricing_input.readings().iter().try_fold(
         Acc {
-            bill: Decimal::ZERO,
-            cons: Decimal::ZERO,
+            import_price: Decimal::ZERO,
+            import_kwh: Decimal::ZERO,
             prev_date: None,
+            export_kwh: Decimal::ZERO,
+            export_price: Decimal::ZERO,
         },
         |mut acc, r| {
             if let Some(period) = tariff.consumption_period() {
                 let reset = match period {
                     ConsumptionPeriod::Day => acc.prev_date != Some(r.local.local_date),
-                    ConsumptionPeriod::Month => acc.prev_date.is_none_or( |d| {
+                    ConsumptionPeriod::Month => acc.prev_date.is_none_or(|d| {
                         d.year() != r.local.local_date.year()
                             || d.month() != r.local.local_date.month()
                     }),
                 };
                 if reset {
-                    acc.cons = Decimal::ZERO;
+                    acc.import_kwh = Decimal::ZERO;
                 }
                 acc.prev_date = Some(r.local.local_date);
             }
 
-            let v = tariff.rate_at(r.local.hour_minute, r.local.weekday, acc.cons)?;
-            acc.bill += r.meter.import * v;
-            acc.cons += r.meter.import;
+            let rate = tariff.rate_at(
+                &TariffDirection::Import,
+                r.local.hour_minute,
+                r.local.weekday,
+                acc.import_kwh,
+            )?;
+            acc.import_price += r.meter.import * rate;
+            acc.import_kwh += r.meter.import;
+
+            if !tariff.export_tariff().is_empty() {
+                let export_rate = tariff.rate_at(
+                    &TariffDirection::Export,
+                    r.local.hour_minute,
+                    r.local.weekday,
+                    acc.export_kwh,
+                )?;
+                if let Some(export) = r.meter.export {
+                    acc.export_price += export * export_rate;
+                    acc.export_kwh += export;
+                    acc.export_kwh += export;
+                }
+            }
 
             Ok::<Acc, PricingError>(acc)
         },
@@ -53,14 +76,13 @@ fn price_cumulative(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc
 /// pricing input's time range, or if any day is not covered by
 /// non-overlapping bands.
 pub fn price(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Decimal, PricingError> {
-
     if pricing_input.is_empty() {
         return Err(PricingError::NoData);
     }
 
     let supply_charge = tariff.supply_rate() * Decimal::from(pricing_input.days());
-    let result = price_cumulative(tariff, pricing_input)?;
-    Ok(result.bill + supply_charge)
+    let result = price_variable(tariff, pricing_input)?;
+    Ok(result.import_price - result.export_price + supply_charge)
 }
 
 #[cfg(test)]
