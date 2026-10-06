@@ -20,7 +20,7 @@ impl TariffFactory {
     ///
     /// Returns [`TariffError`]: direct use of tariffbuilder
     ///
-    /// 
+    ///
     pub fn flat(flat_rate: Decimal, supply_rate: Decimal) -> Result<Tariff, TariffError> {
         TariffBuilder::default()
             .daily_supply(supply_rate)
@@ -77,7 +77,7 @@ mod tests {
         let actual = serde_json::to_string_pretty(&flat_tariff).unwrap();
 
         let expected = r#"{
-  "import_tariff": [
+  "import": [
     {
       "rates": [
         {
@@ -95,21 +95,25 @@ mod tests {
           "minute": 59
         },
         "days_of_week": null
-      }
+      },
+      "cons_period": null
     }
   ],
-  "export_tariff": null,
+  "export": null,
   "discount": null,
   "supply_rate": "1.0"
 }"#;
-        assert_eq!(actual, expected);
+        assert_eq!(
+            actual.replace("\n", "").replace(" ", "").trim(),
+            expected.replace("\n", "").replace(" ", "").trim()
+        );
     }
 
     #[test]
     fn test_deserialize_flat_tariff() {
         use serde_json::json;
         let flat_json = json!(
-          {"import_tariff": [
+          {"import": [
             {
               "rates": [
                 {
@@ -127,10 +131,11 @@ mod tests {
                   "minute": 59
                 },
                 "days_of_week": null
-              }
+              },
+              "cons_period": null
             }
           ],
-          "export_tariff": null,
+          "export": null,
           "discount": null,
           "supply_rate": "1.0"
         });

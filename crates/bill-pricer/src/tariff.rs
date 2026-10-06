@@ -34,9 +34,19 @@ pub struct Discount {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub enum ConsumptionPeriod{
+    Day ,
+    Month,
+    BiMonth,
+    Quarter
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct RatePeriod {
     pub rates: Vec<RateBlock>,
     pub time_band: TimeBand,
+    pub cons_period: Option<ConsumptionPeriod>
+
 }
 
 impl RatePeriod {
@@ -51,13 +61,14 @@ impl RatePeriod {
     }
 
     #[must_use]
-    pub fn new(rate: Decimal, time_band: TimeBand) -> Self {
+    pub fn new(rate: Decimal, time_band: TimeBand, cons_period: Option<ConsumptionPeriod>) -> Self {
         RatePeriod {
             rates: vec![RateBlock {
                 rate,
                 lower_band: dec!(0.0),
             }],
             time_band,
+            cons_period
         }
     }
 }
@@ -73,8 +84,8 @@ pub struct Tariff {
 
 #[derive(Deserialize)]
 pub struct TariffRaw {
-    import_tariff: Vec<RatePeriod>,
-    export_tariff: Option<Vec<RatePeriod>>,
+    import: Vec<RatePeriod>,
+    export: Option<Vec<RatePeriod>>,
     discount: Option<Vec<Discount>>,
     supply_rate: Decimal,
 }
@@ -83,8 +94,8 @@ impl TryFrom<TariffRaw> for Tariff {
     type Error = TariffError;
     fn try_from(raw: TariffRaw) -> Result<Self, TariffError> {
         let tariff = Tariff {
-            import: raw.import_tariff,
-            export: raw.export_tariff,
+            import: raw.import,
+            export: raw.export,
             supply_rate: raw.supply_rate,
             discount: raw.discount,
         };
@@ -255,6 +266,7 @@ fn check_tier_order(rates: &[RateBlock]) -> Result<(), TariffError> {
 pub struct RatePeriodBuilder {
     rates: Vec<RateBlock>,
     time_band: TimeBand,
+    cons_period : Option<ConsumptionPeriod>
 }
 
 impl Default for RatePeriodBuilder {
@@ -262,6 +274,7 @@ impl Default for RatePeriodBuilder {
         Self {
             rates: Vec::default(),
             time_band: TimeBand::full_day(),
+            cons_period: None
         }
     }
 }
@@ -300,14 +313,15 @@ impl RatePeriodBuilder {
         RatePeriod {
             rates: self.rates,
             time_band: self.time_band,
+            cons_period: self.cons_period
         }
     }
 }
 
 #[derive(Default)]
 pub struct TariffBuilder {
-    import_tariff: Vec<RatePeriod>,
-    export_tariff: Option<Vec<RatePeriod>>,
+    import: Vec<RatePeriod>,
+    export: Option<Vec<RatePeriod>>,
     discount: Option<Vec<Discount>>,
     supply_rate: Decimal,
 }
@@ -331,7 +345,7 @@ impl TariffBuilder {
         F: FnOnce(RatePeriodBuilder) -> Result<RatePeriodBuilder, TariffError>,
     {
         let builder = f(RatePeriodBuilder::default())?;
-        self.import_tariff.push(builder.build());
+        self.import.push(builder.build());
 
         Ok(self)
     }
@@ -349,7 +363,7 @@ impl TariffBuilder {
         F: FnOnce(RatePeriodBuilder) -> Result<RatePeriodBuilder, TariffError>,
     {
         let builder = f(RatePeriodBuilder::default())?;
-        self.export_tariff
+        self.export
             .get_or_insert_with(Vec::new)
             .push(builder.build());
 
@@ -367,8 +381,8 @@ impl TariffBuilder {
     /// has no rate blocks.
     pub fn build(self) -> Result<Tariff, TariffError> {
         let tariff = Tariff {
-            import: self.import_tariff,
-            export: self.export_tariff,
+            import: self.import,
+            export: self.export,
             supply_rate: self.supply_rate,
             discount: self.discount,
         };
