@@ -95,13 +95,13 @@ mod tests {
           "minute": 59
         },
         "days_of_week": null
-      },
-      "cons_period": null
+      }
     }
   ],
   "export": null,
   "discount": null,
-  "supply_rate": "1.0"
+  "supply_rate": "1.0",
+  "cons_period": null
 }"#;
         assert_eq!(
             actual.replace("\n", "").replace(" ", "").trim(),
@@ -131,13 +131,13 @@ mod tests {
                   "minute": 59
                 },
                 "days_of_week": null
-              },
-              "cons_period": null
+              }
             }
           ],
           "export": null,
           "discount": null,
-          "supply_rate": "1.0"
+          "supply_rate": "1.0",
+          "cons_period": null,
         });
         let actual: Tariff = serde_json::from_value(flat_json).unwrap();
         assert_eq!(actual, TariffFactory::flat(dec!(0.1), dec!(1.0)).unwrap());

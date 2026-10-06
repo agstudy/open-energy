@@ -33,20 +33,16 @@ pub struct Discount {
     pub amount: Decimal,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub enum ConsumptionPeriod{
-    Day ,
+#[derive(Serialize, Deserialize, Debug, PartialEq, Copy, Clone)]
+pub enum ConsumptionPeriod {
+    Day,
     Month,
-    BiMonth,
-    Quarter
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct RatePeriod {
     pub rates: Vec<RateBlock>,
     pub time_band: TimeBand,
-    pub cons_period: Option<ConsumptionPeriod>
-
 }
 
 impl RatePeriod {
@@ -61,14 +57,13 @@ impl RatePeriod {
     }
 
     #[must_use]
-    pub fn new(rate: Decimal, time_band: TimeBand, cons_period: Option<ConsumptionPeriod>) -> Self {
+    pub fn new(rate: Decimal, time_band: TimeBand) -> Self {
         RatePeriod {
             rates: vec![RateBlock {
                 rate,
                 lower_band: dec!(0.0),
             }],
             time_band,
-            cons_period
         }
     }
 }
@@ -80,6 +75,7 @@ pub struct Tariff {
     export: Option<Vec<RatePeriod>>,
     discount: Option<Vec<Discount>>,
     supply_rate: Decimal,
+    cons_period: Option<ConsumptionPeriod>,
 }
 
 #[derive(Deserialize)]
@@ -88,6 +84,7 @@ pub struct TariffRaw {
     export: Option<Vec<RatePeriod>>,
     discount: Option<Vec<Discount>>,
     supply_rate: Decimal,
+    cons_period: Option<ConsumptionPeriod>,
 }
 
 impl TryFrom<TariffRaw> for Tariff {
@@ -98,6 +95,7 @@ impl TryFrom<TariffRaw> for Tariff {
             export: raw.export,
             supply_rate: raw.supply_rate,
             discount: raw.discount,
+            cons_period: raw.cons_period,
         };
 
         tariff.validate()?;
@@ -125,6 +123,8 @@ pub enum TariffError {
     TierOrder,
     #[error("Missing rates")]
     EmptyRates,
+    #[error("No valid Block rate for consumption: {0}")]
+    EmptyBlockRates(Decimal),
     #[error(transparent)]
     InvalidTimeBand(#[from] InvalidTimeBand),
 }
@@ -138,16 +138,30 @@ impl Tariff {
     /// `at_hm` on `weekday`, [`TariffError::EmptyRates`] if the matching
     /// period has no rate blocks, or [`TariffError::Overlap`] if more than
     /// one period matches.
-    pub fn rate_at(&self, at_hm: HourMinute, weekday: Weekday) -> Result<Decimal, TariffError> {
+    pub fn rate_at(
+        &self,
+        at_hm: HourMinute,
+        weekday: Weekday,
+        cons: Decimal,
+    ) -> Result<Decimal, TariffError> {
         let mut matches = self.import.iter().filter(|p| p.applies_at(&at_hm, weekday));
 
         match (matches.next(), matches.next()) {
             (None, _) => Err(TariffError::NoMatchingPeriod(at_hm)),
-            (Some(period), None) => period
-                .rates
-                .first()
-                .ok_or(TariffError::EmptyRates)
-                .map(|b| b.rate),
+            (Some(period), None) => {
+                if self.consumption_period().is_none() {
+                    period
+                        .rates
+                        .first()
+                        .ok_or(TariffError::EmptyRates)
+                        .map(|b| b.rate)
+                } else {
+                    let mut it = period.rates.iter().filter(|v| v.lower_band <= cons);
+                    it.next_back()
+                        .ok_or(TariffError::EmptyBlockRates(cons))
+                        .map(|b| b.rate)
+                }
+            }
             (Some(_), Some(_)) => Err(TariffError::Overlap(weekday, at_hm)),
         }
     }
@@ -172,6 +186,11 @@ impl Tariff {
     #[must_use]
     pub fn supply_rate(&self) -> Decimal {
         self.supply_rate
+    }
+
+    #[must_use]
+    pub fn consumption_period(&self) -> Option<ConsumptionPeriod> {
+        self.cons_period
     }
 }
 
@@ -266,7 +285,6 @@ fn check_tier_order(rates: &[RateBlock]) -> Result<(), TariffError> {
 pub struct RatePeriodBuilder {
     rates: Vec<RateBlock>,
     time_band: TimeBand,
-    cons_period : Option<ConsumptionPeriod>
 }
 
 impl Default for RatePeriodBuilder {
@@ -274,7 +292,6 @@ impl Default for RatePeriodBuilder {
         Self {
             rates: Vec::default(),
             time_band: TimeBand::full_day(),
-            cons_period: None
         }
     }
 }
@@ -313,7 +330,6 @@ impl RatePeriodBuilder {
         RatePeriod {
             rates: self.rates,
             time_band: self.time_band,
-            cons_period: self.cons_period
         }
     }
 }
@@ -324,9 +340,16 @@ pub struct TariffBuilder {
     export: Option<Vec<RatePeriod>>,
     discount: Option<Vec<Discount>>,
     supply_rate: Decimal,
+    cons_period: Option<ConsumptionPeriod>,
 }
 
 impl TariffBuilder {
+    #[must_use]
+    pub fn consumption_period(mut self, cons_period: ConsumptionPeriod) -> Self {
+        self.cons_period = Some(cons_period);
+        self
+    }
+
     #[must_use]
     pub fn daily_supply(mut self, rate: Decimal) -> Self {
         self.supply_rate = rate;
@@ -385,6 +408,7 @@ impl TariffBuilder {
             export: self.export,
             supply_rate: self.supply_rate,
             discount: self.discount,
+            cons_period: self.cons_period,
         };
 
         tariff.validate()?;
