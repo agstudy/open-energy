@@ -1,9 +1,50 @@
+use crate::tariff::ConsumptionPeriod;
 use crate::tariff::PricingError;
 use crate::tariff::Tariff;
 
+use chrono::Datelike;
+use chrono::NaiveDate;
 use domain::meter::PricingInput;
 use rust_decimal::Decimal;
 
+struct Acc {
+    bill: Decimal,
+    cons: Decimal,
+    prev_date: Option<NaiveDate>,
+}
+
+
+fn price_cumulative(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc, PricingError> {
+    let import_cost = pricing_input.readings().iter().try_fold(
+        Acc {
+            bill: Decimal::ZERO,
+            cons: Decimal::ZERO,
+            prev_date: None,
+        },
+        |mut acc, r| {
+            if let Some(period) = tariff.consumption_period() {
+                let reset = match period {
+                    ConsumptionPeriod::Day => acc.prev_date != Some(r.local.local_date),
+                    ConsumptionPeriod::Month => acc.prev_date.is_none_or( |d| {
+                        d.year() != r.local.local_date.year()
+                            || d.month() != r.local.local_date.month()
+                    }),
+                };
+                if reset {
+                    acc.cons = Decimal::ZERO;
+                }
+                acc.prev_date = Some(r.local.local_date);
+            }
+
+            let v = tariff.rate_at(r.local.hour_minute, r.local.weekday, acc.cons)?;
+            acc.bill += r.meter.import * v;
+            acc.cons += r.meter.import;
+
+            Ok::<Acc, PricingError>(acc)
+        },
+    )?;
+    Ok(import_cost)
+}
 /// Prices the given input against a tariff.
 ///
 /// # Errors
@@ -12,20 +53,14 @@ use rust_decimal::Decimal;
 /// pricing input's time range, or if any day is not covered by
 /// non-overlapping bands.
 pub fn price(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Decimal, PricingError> {
+
     if pricing_input.is_empty() {
         return Err(PricingError::NoData);
     }
 
     let supply_charge = tariff.supply_rate() * Decimal::from(pricing_input.days());
-
-    let import = pricing_input
-        .readings()
-        .iter()
-        .try_fold(Decimal::ZERO, |acc, x| {
-            let v = tariff.rate_at(x.local.hour_minute, x.local.weekday)?;
-            Ok::<Decimal, PricingError>(acc + x.meter.import * v)
-        })?;
-    Ok(import + supply_charge)
+    let result = price_cumulative(tariff, pricing_input)?;
+    Ok(result.bill + supply_charge)
 }
 
 #[cfg(test)]
@@ -335,5 +370,59 @@ mod tests {
         let pricing_input = PricingInput::new(tz, &smart_meter);
 
         assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(365));
+    }
+
+    #[test]
+    fn test_multiflat_daily() {
+        let tariff = TariffBuilder::default()
+            .daily_supply(dec!(1.0))
+            .rate_period(|s| {
+                s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(12))])
+                    .time_band(HourMinute::min(), HourMinute::max(), None)
+            })
+            .unwrap()
+            .consumption_period(ConsumptionPeriod::Day)
+            .build()
+            .unwrap();
+
+        let smart_meter = generate_smart_meter(&GeneratorConfig {
+            start: "2026-01-01 00:00:00".into(),
+            end: "2026-01-02 00:00:00".into(),
+            frequency: 60,
+            daily_kwh: dec!(24),
+            ..Default::default()
+        });
+        // 12*0.2 +12*1 + 1 = 15.4
+        let tz = Tz::from_str("Australia/Sydney").unwrap();
+        let pricing_input = PricingInput::new(tz, &smart_meter);
+
+        assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(15.4));
+    }
+
+    #[test]
+    fn test_multiflat_monthly() {
+        let tariff = TariffBuilder::default()
+            .daily_supply(dec!(1.0))
+            .rate_period(|s| {
+                s.rates(&[(dec!(0.2), dec!(0)), (dec!(0.4), dec!(200))])
+                    .time_band(HourMinute::min(), HourMinute::max(), None)
+            })
+            .unwrap()
+            .consumption_period(ConsumptionPeriod::Month)
+            .build()
+            .unwrap();
+
+        let smart_meter = generate_smart_meter(&GeneratorConfig {
+            start: "2026-01-01 00:00:00".into(),
+            end: "2026-04-01 00:00:00".into(),
+            frequency: 60,
+            daily_kwh: dec!(24),
+            ..Default::default()
+        });
+        // 10*3*0.2*24 +(21+18+21)*0.4*24 + 31+28+31 = 120 + 480 + 90 = 689
+        let tz = Tz::from_str("Australia/Sydney").unwrap();
+        let pricing_input = PricingInput::new(tz, &smart_meter);
+
+        assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(834));
     }
 }
