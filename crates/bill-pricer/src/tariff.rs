@@ -129,10 +129,9 @@ pub enum TariffError {
     InvalidTimeBand(#[from] InvalidTimeBand),
 }
 
-
 pub enum TariffDirection {
-    Import, 
-    Export 
+    Import,
+    Export,
 }
 impl Tariff {
     /// Returns the applicable rate for `(hour, minute)` on the given `weekday`.

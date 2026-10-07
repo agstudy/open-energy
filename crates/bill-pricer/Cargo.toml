@@ -15,3 +15,5 @@ chrono = { workspace = true }
 chrono-tz = { workspace = true }
 
 domain = { path = "../../domain" }
+[dev-dependencies]
+csv = { workspace = true }

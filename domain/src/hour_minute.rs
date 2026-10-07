@@ -122,7 +122,7 @@ impl HourMinute {
     pub fn minute_of_day(&self) -> u32 {
         self.hour * 60 + self.minute
     }
-    
+
     /// Builds a time of day from the number of minutes since midnight.
     ///
     /// # Errors

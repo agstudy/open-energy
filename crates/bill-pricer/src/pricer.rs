@@ -447,4 +447,24 @@ mod tests {
 
         assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(834));
     }
+
+    #[test]
+    fn price_export() {
+        let smart_meter = generate_smart_meter(&GeneratorConfig {
+            end: "2027-01-01 00:00:00".into(),
+            with_export: true,
+            system_capacity: 4,
+            daily_kwh: dec!(10),
+            ..Default::default()
+        });
+        let flat_tariff = TariffFactory::flat_export(dec!(1), dec!(0.0), dec!(1)).unwrap();
+
+        let tz = Tz::from_str("Australia/Sydney").unwrap();
+        let pricing_input = PricingInput::new(tz, &smart_meter);
+
+        assert_eq!(
+            price(&flat_tariff, &pricing_input).unwrap().round(),
+            dec!(-1493)
+        );
+    }
 }
