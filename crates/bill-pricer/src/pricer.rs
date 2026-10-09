@@ -17,6 +17,7 @@ struct Acc {
 }
 
 fn price_variable(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc, PricingError> {
+    let is_export_empty = tariff.export_tariff().is_empty();
     let import_cost = pricing_input.readings().iter().try_fold(
         Acc {
             import_price: Decimal::ZERO,
@@ -49,7 +50,7 @@ fn price_variable(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc, 
             acc.import_price += r.meter.import * rate;
             acc.import_kwh += r.meter.import;
 
-            if !tariff.export_tariff().is_empty() {
+            if !is_export_empty {
                 let export_rate = tariff.rate_at(
                     TariffDirection::Export,
                     r.local.hour_minute,
@@ -287,7 +288,7 @@ mod tests {
 
         let pricing_input = priced(&smart_meter, SYDNEY);
 
-        //24*0.2
+        //24*1 +1 = 25
         assert_eq!(price(&flat_tariff, &pricing_input).unwrap(), dec!(25));
     }
 
