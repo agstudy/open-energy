@@ -81,7 +81,8 @@ impl HourMinute {
         }
     }
 
-    pub(crate) fn new_unchecked(hour: u32, minute: u32) -> Self {
+    #[must_use]
+    pub fn new_unchecked(hour: u32, minute: u32) -> Self {
         HourMinute { hour, minute }
     }
     /// Returns the previous minute, wrapping from 00:00 to 23:59.

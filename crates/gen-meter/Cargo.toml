@@ -1,5 +1,5 @@
 [package]
-name = "bill-pricer"
+name = "gen-meter"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,15 +7,7 @@ edition = "2024"
 thiserror = { workspace = true }
 rust_decimal = { workspace = true }
 rust_decimal_macros = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-
-bitflags = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
-
 domain = { path = "../../domain" }
-
-[dev-dependencies]
 csv = { workspace = true }
-gen-meter = { path = "../gen-meter" }

@@ -99,6 +99,7 @@ dependencies = [
  "chrono-tz",
  "csv",
  "domain",
+ "gen-meter",
  "rust_decimal",
  "rust_decimal_macros",
  "serde",
@@ -348,6 +349,19 @@ name = "funty"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6d5a32815ae3f33302d95fdcb2ce17862f8c65363dcfd29360480ba1001fc9c"
+
+[[package]]
+name = "gen-meter"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "csv",
+ "domain",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "thiserror",
+]
 
 [[package]]
 name = "getrandom"

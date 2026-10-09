@@ -34,7 +34,7 @@ impl TariffFactory {
             .build()
     }
 
-    /// Builds a falt tariff with export tariff.
+    /// Builds a flat tariff with export tariff.
     ///
     /// # Errors
     ///

@@ -129,6 +129,7 @@ pub enum TariffError {
     InvalidTimeBand(#[from] InvalidTimeBand),
 }
 
+#[derive(Debug, Copy, Clone)]
 pub enum TariffDirection {
     Import,
     Export,
@@ -144,7 +145,7 @@ impl Tariff {
     /// one period matches.
     pub fn rate_at(
         &self,
-        direction: &TariffDirection,
+        direction: TariffDirection,
         at_hm: HourMinute,
         weekday: Weekday,
         cons: Decimal,

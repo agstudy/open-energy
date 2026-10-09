@@ -27,18 +27,20 @@ impl MeterMeasure {
     pub fn to_local(&self, tz: Tz) -> LocalMeasure {
         let local = self.utc_start.with_timezone(&tz);
         LocalMeasure {
-            local_date: local.date_naive(),
+            date: local.date_naive(),
             hour_minute: HourMinute::new_unchecked(local.hour(), local.minute()),
             weekday: local.weekday(),
+            datetime: local
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LocalMeasure {
-    pub local_date: NaiveDate,
+    pub date: NaiveDate,
     pub hour_minute: HourMinute,
     pub weekday: Weekday,
+    pub datetime: DateTime<Tz>
 }
 
 #[derive(Debug, Clone)]
@@ -94,7 +96,7 @@ impl PricingInput {
     pub fn days(&self) -> usize {
         self.measures
             .iter()
-            .map(|v| v.local.local_date)
+            .map(|v| v.local.date)
             .collect::<HashSet<NaiveDate>>()
             .len()
     }
