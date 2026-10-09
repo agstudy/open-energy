@@ -1,6 +1,7 @@
 use crate::tariff::ConsumptionPeriod;
 use crate::tariff::PricingError;
 use crate::tariff::Tariff;
+use crate::tariff::TariffDirection;
 
 use chrono::Datelike;
 use chrono::NaiveDate;
@@ -8,37 +9,59 @@ use domain::meter::PricingInput;
 use rust_decimal::Decimal;
 
 struct Acc {
-    bill: Decimal,
-    cons: Decimal,
+    import_price: Decimal,
+    import_kwh: Decimal,
     prev_date: Option<NaiveDate>,
+    export_price: Decimal,
+    export_kwh: Decimal,
 }
 
-
-fn price_cumulative(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc, PricingError> {
+fn price_variable(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc, PricingError> {
     let import_cost = pricing_input.readings().iter().try_fold(
         Acc {
-            bill: Decimal::ZERO,
-            cons: Decimal::ZERO,
+            import_price: Decimal::ZERO,
+            import_kwh: Decimal::ZERO,
             prev_date: None,
+            export_kwh: Decimal::ZERO,
+            export_price: Decimal::ZERO,
         },
         |mut acc, r| {
             if let Some(period) = tariff.consumption_period() {
                 let reset = match period {
-                    ConsumptionPeriod::Day => acc.prev_date != Some(r.local.local_date),
-                    ConsumptionPeriod::Month => acc.prev_date.is_none_or( |d| {
-                        d.year() != r.local.local_date.year()
-                            || d.month() != r.local.local_date.month()
+                    ConsumptionPeriod::Day => acc.prev_date != Some(r.local.date),
+                    ConsumptionPeriod::Month => acc.prev_date.is_none_or(|d| {
+                        d.year() != r.local.date.year()
+                            || d.month() != r.local.date.month()
                     }),
                 };
                 if reset {
-                    acc.cons = Decimal::ZERO;
+                    acc.import_kwh = Decimal::ZERO;
+                    acc.export_kwh = Decimal::ZERO;
                 }
-                acc.prev_date = Some(r.local.local_date);
+                acc.prev_date = Some(r.local.date);
             }
 
-            let v = tariff.rate_at(r.local.hour_minute, r.local.weekday, acc.cons)?;
-            acc.bill += r.meter.import * v;
-            acc.cons += r.meter.import;
+            let rate = tariff.rate_at(
+                TariffDirection::Import,
+                r.local.hour_minute,
+                r.local.weekday,
+                acc.import_kwh,
+            )?;
+            acc.import_price += r.meter.import * rate;
+            acc.import_kwh += r.meter.import;
+
+            if !tariff.export_tariff().is_empty() {
+                let export_rate = tariff.rate_at(
+                    TariffDirection::Export,
+                    r.local.hour_minute,
+                    r.local.weekday,
+                    acc.export_kwh,
+                )?;
+                if let Some(export) = r.meter.export {
+                    acc.export_price += export * export_rate;
+                    acc.export_kwh += export;
+                }
+            }
 
             Ok::<Acc, PricingError>(acc)
         },
@@ -53,14 +76,13 @@ fn price_cumulative(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc
 /// pricing input's time range, or if any day is not covered by
 /// non-overlapping bands.
 pub fn price(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Decimal, PricingError> {
-
     if pricing_input.is_empty() {
         return Err(PricingError::NoData);
     }
 
     let supply_charge = tariff.supply_rate() * Decimal::from(pricing_input.days());
-    let result = price_cumulative(tariff, pricing_input)?;
-    Ok(result.bill + supply_charge)
+    let result = price_variable(tariff, pricing_input)?;
+    Ok(result.import_price - result.export_price + supply_charge)
 }
 
 #[cfg(test)]
@@ -70,15 +92,15 @@ mod tests {
         WeekDays,
         tariff::{TariffBuilder, TariffError},
         tariff_factory::{TariffFactory, Window},
-        tests_utils::{
-            GeneratorConfig, generate_smart_meter, get_tou_tariff, str_to_native_date,
-            str_to_native_datetime, utc_from_local,
-        },
+        tests_utils::{get_tou_tariff, str_to_native_date, str_to_native_datetime, utc_from_local},
     };
+
+
 
     use super::*;
     use domain::{hour_minute::HourMinute, meter::MeterMeasure};
-    use rust_decimal_macros::dec;
+    use gen_meter::generator::{GeneratorConfig, generate_smart_meter};
+use rust_decimal_macros::dec;
 
     use chrono::{NaiveDate, TimeZone, Utc};
     use chrono_tz::Tz;
@@ -207,7 +229,7 @@ mod tests {
     #[test]
     fn test_day_count() {
         let timezone = "Australia/Sydney";
-        let smart_meter = generate_smart_meter(&GeneratorConfig::default());
+        let smart_meter = generate_smart_meter(&GeneratorConfig::default()).unwrap();
         let tz = Tz::from_str(timezone).unwrap();
         let pricing_input = PricingInput::new(tz, &smart_meter);
 
@@ -218,13 +240,13 @@ mod tests {
     #[test]
     fn test_singular_dates_count() {
         let timezone = "Australia/Sydney";
-        let smart_meter = generate_smart_meter(&GeneratorConfig::default());
+        let smart_meter = generate_smart_meter(&GeneratorConfig::default()).unwrap();
 
         let tz = Tz::from_str(timezone).unwrap();
         let pricing_input = PricingInput::new(tz, &smart_meter);
         let mut map: HashMap<NaiveDate, u8> = HashMap::new();
         for r in pricing_input.readings() {
-            *map.entry(r.local.local_date).or_default() += 1;
+            *map.entry(r.local.date).or_default() += 1;
         }
 
         let april_05 = str_to_native_date("2026-04-05");
@@ -246,7 +268,7 @@ mod tests {
         let smart_meter = generate_smart_meter(&GeneratorConfig {
             end: "2026-01-02 00:00:00".into(),
             ..Default::default()
-        });
+        }).unwrap();
         let flat_tariff = TariffFactory::flat(dec!(1), dec!(1.0)).unwrap();
 
         let tz = Tz::from_str("Australia/Sydney").unwrap();
@@ -275,7 +297,7 @@ mod tests {
         let smart_meter = generate_smart_meter(&GeneratorConfig {
             end: "2026-01-08 00:00:00".into(),
             ..Default::default()
-        });
+        }).unwrap();
         let flat_rate = dec!(0.2);
 
         let flat_tariff = || -> Result<Tariff, TariffError> {
@@ -362,7 +384,7 @@ mod tests {
         let smart_meter = generate_smart_meter(&GeneratorConfig {
             //end: "2026-01-08 00:00:00".into(),
             ..Default::default()
-        });
+        }).unwrap();
 
         let tariff = TariffFactory::flat(dec!(0.0), dec!(1)).unwrap();
 
@@ -391,7 +413,7 @@ mod tests {
             frequency: 60,
             daily_kwh: dec!(24),
             ..Default::default()
-        });
+        }).unwrap();
         // 12*0.2 +12*1 + 1 = 15.4
         let tz = Tz::from_str("Australia/Sydney").unwrap();
         let pricing_input = PricingInput::new(tz, &smart_meter);
@@ -418,11 +440,31 @@ mod tests {
             frequency: 60,
             daily_kwh: dec!(24),
             ..Default::default()
-        });
+        }).unwrap();
         // 10*3*0.2*24 +(21+18+21)*0.4*24 + 31+28+31 = 120 + 480 + 90 = 689
         let tz = Tz::from_str("Australia/Sydney").unwrap();
         let pricing_input = PricingInput::new(tz, &smart_meter);
 
         assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(834));
+    }
+
+    #[test]
+    fn price_export() {
+        let smart_meter = generate_smart_meter(&GeneratorConfig {
+            end: "2027-01-01 00:00:00".into(),
+            with_export: true,
+            system_capacity: 1,
+            daily_kwh: dec!(0),
+            ..Default::default()
+        }).unwrap();
+        let flat_tariff = TariffFactory::flat_export(dec!(1), dec!(0.0), dec!(1)).unwrap();
+
+        let tz = Tz::from_str("Australia/Sydney").unwrap();
+        let pricing_input = PricingInput::new(tz, &smart_meter);
+
+        assert_eq!(
+            price(&flat_tariff, &pricing_input).unwrap().round(),
+            dec!(-1493)
+        );
     }
 }

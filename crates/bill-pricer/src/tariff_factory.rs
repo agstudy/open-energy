@@ -34,6 +34,37 @@ impl TariffFactory {
             .build()
     }
 
+    /// Builds a flat tariff with export tariff.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TariffError`]: direct use of tariffbuilder
+    ///
+    ///
+    pub fn flat_export(
+        flat_rate: Decimal,
+        supply_rate: Decimal,
+        export_rate: Decimal,
+    ) -> Result<Tariff, TariffError> {
+        TariffBuilder::default()
+            .daily_supply(supply_rate)
+            .rate_period(|s| {
+                s.rates(&[(flat_rate, dec!(0))]).time_band(
+                    HourMinute::min(),
+                    HourMinute::max(),
+                    None,
+                )
+            })?
+            .export_rate_period(|s| {
+                s.rates(&[(export_rate, dec!(0))]).time_band(
+                    HourMinute::min(),
+                    HourMinute::max(),
+                    None,
+                )
+            })?
+            .build()
+    }
+
     /// Builds a time-of-use tariff with the given peak and off-peak windows
     /// and daily supply rate.
     ///

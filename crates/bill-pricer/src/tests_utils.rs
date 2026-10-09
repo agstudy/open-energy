@@ -1,8 +1,8 @@
 #![cfg(test)]
 
-use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
+
 use chrono_tz::Tz;
-use domain::meter::MeterMeasure;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::str::FromStr;
@@ -42,54 +42,13 @@ pub fn get_tou_tariff(
         &Window {
             rate: peak,
             start: start_peak.try_into().unwrap(),
-        }, // peak: 16:00–20:59
+        },
         &Window {
             rate: off_peak,
             start: start_off_peak.try_into().unwrap(),
-        }, // off-peak: 21:00–15:59
+        },
         dec!(1.0),
     )
     .unwrap()
 }
 
-pub struct GeneratorConfig {
-    pub start: String,
-    pub end: String,
-    pub frequency: i64,
-    pub timezone: String,
-    pub daily_kwh: Decimal,
-}
-
-impl Default for GeneratorConfig {
-    fn default() -> Self {
-        Self {
-            start: "2026-01-01 00:00:00".into(),
-            end: "2027-01-01 00:00:00".into(),
-            frequency: 30,
-            timezone: "Australia/Sydney".into(),
-            daily_kwh: dec!(24),
-        }
-    }
-}
-pub fn generate_smart_meter(config: &GeneratorConfig) -> Vec<MeterMeasure> {
-    let mut start_utc = utc_from_local(
-        str_to_native_datetime(config.start.as_str()),
-        config.timezone.as_str(),
-    );
-    let end_utc = utc_from_local(
-        str_to_native_datetime(config.end.as_str()),
-        config.timezone.as_str(),
-    );
-    let mut result: Vec<MeterMeasure> = vec![];
-    while start_utc < end_utc {
-        let measure = MeterMeasure {
-            utc_start: start_utc,
-            import: config.daily_kwh / Decimal::from(1440 / config.frequency),
-            export: None,
-        };
-        result.push(measure);
-
-        start_utc += Duration::minutes(config.frequency)
-    }
-    result
-}

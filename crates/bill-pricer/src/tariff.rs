@@ -129,6 +129,11 @@ pub enum TariffError {
     InvalidTimeBand(#[from] InvalidTimeBand),
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum TariffDirection {
+    Import,
+    Export,
+}
 impl Tariff {
     /// Returns the applicable rate for `(hour, minute)` on the given `weekday`.
     ///
@@ -140,11 +145,17 @@ impl Tariff {
     /// one period matches.
     pub fn rate_at(
         &self,
+        direction: TariffDirection,
         at_hm: HourMinute,
         weekday: Weekday,
         cons: Decimal,
     ) -> Result<Decimal, TariffError> {
-        let mut matches = self.import.iter().filter(|p| p.applies_at(&at_hm, weekday));
+        let periods = match direction {
+            TariffDirection::Import => self.import_tariff(),
+            TariffDirection::Export => self.export_tariff(),
+        };
+
+        let mut matches = periods.iter().filter(|p| p.applies_at(&at_hm, weekday));
 
         match (matches.next(), matches.next()) {
             (None, _) => Err(TariffError::NoMatchingPeriod(at_hm)),
@@ -156,8 +167,10 @@ impl Tariff {
                         .ok_or(TariffError::EmptyRates)
                         .map(|b| b.rate)
                 } else {
-                    let mut it = period.rates.iter().filter(|v| v.lower_band <= cons);
-                    it.next_back()
+                    period
+                        .rates
+                        .iter()
+                        .rfind(|v| v.lower_band <= cons)
                         .ok_or(TariffError::EmptyBlockRates(cons))
                         .map(|b| b.rate)
                 }
@@ -165,7 +178,6 @@ impl Tariff {
             (Some(_), Some(_)) => Err(TariffError::Overlap(weekday, at_hm)),
         }
     }
-
     /// # Errors
     ///
     /// Returns [`TariffError::Gap`] if a day is not fully covered,
@@ -191,6 +203,16 @@ impl Tariff {
     #[must_use]
     pub fn consumption_period(&self) -> Option<ConsumptionPeriod> {
         self.cons_period
+    }
+
+    #[must_use]
+    pub fn import_tariff(&self) -> &[RatePeriod] {
+        self.import.as_slice()
+    }
+
+    #[must_use]
+    pub fn export_tariff(&self) -> &[RatePeriod] {
+        self.export.as_deref().unwrap_or(&[])
     }
 }
 
