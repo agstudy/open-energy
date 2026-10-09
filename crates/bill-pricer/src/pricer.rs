@@ -94,6 +94,8 @@ mod tests {
         tests_utils::{get_tou_tariff, str_to_native_date, str_to_native_datetime, utc_from_local},
     };
 
+
+
     use super::*;
     use domain::{hour_minute::HourMinute, meter::MeterMeasure};
     use gen_meter::generator::{GeneratorConfig, generate_smart_meter};
