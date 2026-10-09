@@ -1,25 +1,46 @@
-{"import_tariff": [
-            {
-              "rates": [
-                {
-                  "rate": "0.2",
-                  "lower_band": "0.0"
-                }
-              ],
-              "time_band": {
-                "start": {
-                  "hour": 0,
-                  "minute": 0
-                },
-                "end": {
-                  "hour": 23,
-                  "minute": 59
-                },
-                "days_of_week": null
-              }
-            }
-          ],
-          "export_tariff": null,
-          "discount": null,
-          "supply_rate": "2.0"
+{
+  "import": [
+    {
+      "rates": [
+        {
+          "rate": "0.2",
+          "lower_band": "0.0"
         }
+      ],
+      "time_band": {
+        "start": {
+          "hour": 0,
+          "minute": 0
+        },
+        "end": {
+          "hour": 23,
+          "minute": 59
+        },
+        "days_of_week": null
+      }
+    }
+  ],
+  "export": [
+    {
+      "rates": [
+        {
+          "rate": "0.05",
+          "lower_band": "0.0"
+        }
+      ],
+      "time_band": {
+        "start": {
+          "hour": 0,
+          "minute": 0
+        },
+        "end": {
+          "hour": 23,
+          "minute": 59
+        },
+        "days_of_week": null
+      }
+    }
+  ],
+  "discount": null,
+  "supply_rate": "1.0"
+}

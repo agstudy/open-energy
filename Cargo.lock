@@ -325,6 +325,7 @@ dependencies = [
  "chrono-tz",
  "clap",
  "domain",
+ "gen-meter",
  "meter-parser",
  "rust_decimal",
  "rust_decimal_macros",

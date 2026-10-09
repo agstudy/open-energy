@@ -16,4 +16,4 @@ chrono-tz = { workspace = true }
 meter-parser = { path = "../meter-parser" }
 bill-pricer = { path = "../bill-pricer" }
 domain = { path = "../../domain" }
-gen-meter = {path = "../../gen-meter"}
+gen-meter = {path = "../gen-meter"}

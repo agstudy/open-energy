@@ -57,7 +57,6 @@ pub struct GeneratorConfig {
     pub start: String,
     pub end: String,
     pub frequency: i64,
-    pub timezone: String,
     pub daily_kwh: Decimal,
     pub system_capacity: u32,
     pub with_export: bool,
@@ -69,7 +68,6 @@ impl Default for GeneratorConfig {
             start: "2026-01-01 00:00:00".into(),
             end: "2027-01-01 00:00:00".into(),
             frequency: 30,
-            timezone: "Australia/Sydney".into(),
             daily_kwh: dec!(24),
             with_export: false,
             system_capacity: 4,
@@ -91,11 +89,11 @@ fn validate_config(config: &GeneratorConfig) -> Result<(), ConfigError> {
     Ok(())
 }
 
-pub fn generate_smart_meter(config: &GeneratorConfig) -> Result<Vec<MeterMeasure>, GeneratorError> {
+pub fn generate_smart_meter(config: &GeneratorConfig, tz_str: &str) -> Result<Vec<MeterMeasure>, GeneratorError> {
     validate_config(config)?;
 
-    let mut utc_start = utc_from_local_str(&config.start, &config.timezone)?;
-    let end_utc = utc_from_local_str(&config.end, &config.timezone)?;
+    let mut utc_start = utc_from_local_str(&config.start, tz_str)?;
+    let end_utc = utc_from_local_str(&config.end, tz_str)?;
 
     if utc_start >= end_utc {
         return Err(GeneratorError::InvalidRange {
@@ -213,7 +211,6 @@ fn read_solar(
     // todo: remove this hardcoded once we create the mapping zone -> postcode -> pvwatt file
     let path = concat!(env!("CARGO_MANIFEST_DIR"), "/data/pvwatts/nsw_2000.csv");
 
-
     let reader = File::open(path)?;
 
     let mut rdr = csv::ReaderBuilder::new()
@@ -250,7 +247,7 @@ mod tests {
             system_capacity: cap,
             daily_kwh: Decimal::from(avg_kwh),
             ..Default::default()
-        })
+        },"Australia/Sydney".into())
         .unwrap()
     }
 
@@ -340,7 +337,7 @@ mod tests {
             end: "2026-01-02 00:00:00".into(),
 
             ..Default::default()
-        })
+        },"Australia/Sydney".into())
         .unwrap();
 
         let mut middday_export = sm.iter().filter(|&m| {
@@ -368,6 +365,4 @@ mod tests {
         assert_eq!(sm[0].utc_start.hour(), 13);
         assert_eq!(sm[0].utc_start.minute(), 0);
     }
-
-
 }
