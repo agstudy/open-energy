@@ -175,7 +175,7 @@ fn main() -> AnyResult<()> {
             run_parse(&file, verbose)?;
         }
         Commands::Price { source, tariff, tz } => {
-            let bill = run_price(source, tariff, tz)?;
+            let bill = run_price(source, tariff, &tz)?;
             println!("bill is {}", bill.round_dp(2));
         }
     }
@@ -217,11 +217,11 @@ fn run_parse(path: &Path, verbose: bool) -> AnyResult<()> {
     Ok(())
 }
 
-fn run_price(source: SourceArgs, tariff: TariffCmd, tz: String) -> AnyResult<Decimal>{
+fn run_price(source: SourceArgs, tariff: TariffCmd, tz: &str) -> AnyResult<Decimal>{
     eprintln!("--- Pricing smart meter ---");
 
     let tariff = tariff.try_into()?;
-    let smart_meter = source.into_measures(&tz)?;
-    let pricing_input = PricingInput::new(Tz::from_str(&tz)?, &smart_meter);
+    let smart_meter = source.into_measures(tz)?;
+    let pricing_input = PricingInput::new(Tz::from_str(tz)?, &smart_meter);
     Ok(price(&tariff, &pricing_input)?)
 }
