@@ -1,18 +1,18 @@
+use anyhow::Context;
+use anyhow::Result as AnyResult;
 use bill_pricer::pricer::price;
 use bill_pricer::tariff::{Tariff, TariffRaw};
 use bill_pricer::tariff_factory::{TariffFactory, Window};
-use clap::{Parser, Subcommand};
+use chrono_tz::Tz;
+use clap::{Args, Parser, Subcommand};
 use domain::HourMinute;
-use domain::meter::{PricingInput, merge_import_export};
+use domain::meter::{MeterMeasure, PricingInput, merge_import_export};
+use gen_meter::generator::{GeneratorConfig, generate_smart_meter};
+use meter_parser::Nem12Parser;
 use rust_decimal::Decimal;
 use std::fs::File;
-use std::path::{Path, PathBuf};
-// Import your library crates
-use anyhow::Context;
-use anyhow::Result as AnyResult;
-use chrono_tz::Tz;
-use meter_parser::Nem12Parser;
 use std::io::BufReader;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 #[derive(Parser)]
@@ -51,6 +51,53 @@ enum TariffCmd {
     },
 }
 
+#[derive(Args)]
+struct GeneratedArgs {
+    #[arg(long, requires = "generated")]
+    start: Option<String>,
+    #[arg(long, requires = "generated")]
+    end: Option<String>,
+    #[arg(long, requires = "generated")]
+    frequency: Option<i64>,
+    #[arg(long, requires = "generated")]
+    daily_kwh: Option<Decimal>,
+    #[arg(long, requires_all = ["generated","with_export"])]
+    system_capacity: Option<u32>,
+    #[arg(long, requires = "generated")]
+    with_export: bool,
+}
+
+impl GeneratedArgs {
+    fn into_config(self) -> GeneratorConfig {
+        let defaults = GeneratorConfig::default();
+        GeneratorConfig {
+            start: self.start.unwrap_or(defaults.start),
+            end: self.end.unwrap_or(defaults.end),
+            frequency: self.frequency.unwrap_or(defaults.frequency),
+            daily_kwh: self.daily_kwh.unwrap_or(defaults.daily_kwh),
+            system_capacity: self.system_capacity.unwrap_or(defaults.system_capacity),
+            with_export: self.with_export || defaults.with_export,
+        }
+    }
+}
+
+#[derive(Args)]
+#[command(group(
+    clap::ArgGroup::new("source")
+        .required(true)
+        .multiple(false)
+))]
+struct SourceArgs {
+    #[arg(short, long, group = "source")]
+    file: Option<PathBuf>,
+
+    #[arg(long, group = "source")] // optional
+    generated: bool,
+
+    #[command(flatten)]
+    genn: GeneratedArgs,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Parse NEM12 smart meter files
@@ -63,10 +110,10 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
     },
-    /// Price NEM12 smart meter files
+
     Price {
-        #[arg(short, long)]
-        file: PathBuf,
+        #[command(flatten)]
+        source: SourceArgs,
 
         #[command(subcommand)]
         tariff: TariffCmd,
@@ -74,6 +121,23 @@ enum Commands {
         #[arg(long)]
         tz: String,
     },
+}
+
+impl SourceArgs {
+    fn into_measures(self, tz_str: &str) -> AnyResult<Vec<MeterMeasure>> {
+        match (self.file, self.generated) {
+            (Some(path), _) => {
+                eprintln!("--- Pricing NEM12 smart meter ---");
+                let parser = parse_file(&path).context("Failed to parse Nem12 file")?;
+                Ok(merge_import_export(&parser.import(), &parser.export()))
+            }
+            (_, true) => {
+                let cfg = self.genn.into_config();
+                Ok(generate_smart_meter(&cfg, tz_str)?)
+            }
+            _ => unreachable!("clap ArgGroup guarantees exactly one source"),
+        }
+    }
 }
 
 impl TryFrom<TariffCmd> for Tariff {
@@ -110,9 +174,9 @@ fn main() -> AnyResult<()> {
         Commands::Parse { file, verbose } => {
             run_parse(&file, verbose)?;
         }
-        Commands::Price { file, tariff, tz } => {
-            let bill = price_file(&file, &tariff.try_into()?, Tz::from_str(&tz)?)?;
-            println!("Bill is : {bill}");
+        Commands::Price { source, tariff, tz } => {
+            let bill = run_price(source, tariff, &tz)?;
+            println!("bill is {}", bill.round_dp(2));
         }
     }
     Ok(())
@@ -138,18 +202,8 @@ fn parse_tariff_file(path: &Path) -> AnyResult<Tariff> {
     Tariff::try_from(tariff_raw).context("Failed to load tariff")
 }
 
-fn price_file(path: &Path, tariff: &Tariff, tz: Tz) -> AnyResult<Decimal> {
-    eprintln!("--- Pricing NEM12 smart meter ---");
-    let parser = parse_file(path).context("Failed to parse Nem12 file")?;
-    let smart_meter = merge_import_export(&parser.import(), &parser.export());
-
-    let pricing_input = PricingInput::new(tz, &smart_meter);
-
-    Ok(price(tariff, &pricing_input)?)
-}
-
 fn run_parse(path: &Path, verbose: bool) -> AnyResult<()> {
-    eprintln!("--- Pricing NEM12 smart meter ---");
+    eprintln!("--- Parsing NEM12 smart meter ---");
     let parser = parse_file(path)?;
     eprintln!("Success! Parsed {} days.", parser.results.len());
     if verbose {
@@ -161,4 +215,13 @@ fn run_parse(path: &Path, verbose: bool) -> AnyResult<()> {
         println!("{key}: {value}");
     }
     Ok(())
+}
+
+fn run_price(source: SourceArgs, tariff: TariffCmd, tz: &str) -> AnyResult<Decimal>{
+    eprintln!("--- Pricing smart meter ---");
+
+    let tariff = tariff.try_into()?;
+    let smart_meter = source.into_measures(tz)?;
+    let pricing_input = PricingInput::new(Tz::from_str(tz)?, &smart_meter);
+    Ok(price(&tariff, &pricing_input)?)
 }

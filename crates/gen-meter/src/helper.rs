@@ -1,11 +1,6 @@
-
-use chrono::{DateTime,  NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 
 use chrono_tz::Tz;
-
-
-
-
 
 #[derive(Debug, thiserror::Error)]
 pub enum LocalConversionError {
@@ -45,7 +40,10 @@ fn utc_from_local(
         .map(|dt| dt.with_timezone(&Utc))
 }
 
-pub(crate) fn utc_from_local_str(s: &str, tz_str: &str) -> Result<DateTime<Utc>, LocalConversionError> {
+pub(crate) fn utc_from_local_str(
+    s: &str,
+    tz_str: &str,
+) -> Result<DateTime<Utc>, LocalConversionError> {
     let naive = parse_naive_datetime(s)?;
     utc_from_local(naive, tz_str)
 }

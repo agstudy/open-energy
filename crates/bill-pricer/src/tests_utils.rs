@@ -51,4 +51,3 @@ pub fn get_tou_tariff(
     )
     .unwrap()
 }
-

@@ -30,8 +30,7 @@ fn price_variable(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc, 
                 let reset = match period {
                     ConsumptionPeriod::Day => acc.prev_date != Some(r.local.date),
                     ConsumptionPeriod::Month => acc.prev_date.is_none_or(|d| {
-                        d.year() != r.local.date.year()
-                            || d.month() != r.local.date.month()
+                        d.year() != r.local.date.year() || d.month() != r.local.date.month()
                     }),
                 };
                 if reset {
@@ -100,42 +99,70 @@ mod tests {
     use super::*;
     use domain::{hour_minute::HourMinute, meter::MeterMeasure};
     use gen_meter::generator::{GeneratorConfig, generate_smart_meter};
-use rust_decimal_macros::dec;
+    use rust_decimal_macros::dec;
 
     use chrono::{NaiveDate, TimeZone, Utc};
     use chrono_tz::Tz;
     use std::{collections::HashMap, str::FromStr};
 
-    #[test]
-    fn test_sydney_winter_midnight() {
-        assert_eq!(
-            utc_from_local(
-                str_to_native_datetime("2023-06-02 00:00:00"),
-                "Australia/Sydney"
-            ),
-            Utc.from_utc_datetime(&str_to_native_datetime("2023-06-01 14:00:00"))
-        );
+    const SYDNEY: &str = "Australia/Sydney";
+    const BRISBANE: &str = "Australia/Brisbane";
+
+    fn tz(name: &str) -> Tz {
+        Tz::from_str(name).unwrap()
     }
-    #[test]
-    fn test_sydney_summer_midnight() {
-        assert_eq!(
-            utc_from_local(
-                str_to_native_datetime("2023-12-15 00:00:00"),
-                "Australia/Sydney"
-            ),
-            Utc.from_utc_datetime(&str_to_native_datetime("2023-12-14 13:00:00"))
-        );
+
+    fn sm(cfg: &GeneratorConfig) -> Vec<MeterMeasure> {
+        generate_smart_meter(cfg, SYDNEY.into()).unwrap()
+    }
+
+    fn priced(meter: &[MeterMeasure], zone: &str) -> PricingInput {
+        PricingInput::new(tz(zone), meter)
+    }
+
+    fn utc_local(local: &str, zone: &str) -> chrono::DateTime<Utc> {
+        utc_from_local(str_to_native_datetime(local), zone)
+    }
+
+    fn flat_tariff(
+        weekday: Decimal,
+        weekend: Option<Decimal>,
+        supply: Decimal,
+    ) -> Result<Tariff, TariffError> {
+        let mut b = TariffBuilder::default().daily_supply(supply);
+        b = b.rate_period(|s| {
+            s.rates(&[(weekday, dec!(0))]).time_band(
+                HourMinute::min(),
+                HourMinute::max(),
+                Some(WeekDays::working_days()),
+            )
+        })?;
+        if let Some(w) = weekend {
+            b = b.rate_period(|s| {
+                s.rates(&[(w, dec!(0))]).time_band(
+                    HourMinute::min(),
+                    HourMinute::max(),
+                    Some(WeekDays::weekend()),
+                )
+            })?;
+        }
+        b.build()
     }
 
     #[test]
-    fn test_brisbane_summer_midnight() {
-        assert_eq!(
-            utc_from_local(
-                str_to_native_datetime("2023-12-15 00:00:00"),
-                "Australia/Brisbane"
-            ),
-            Utc.from_utc_datetime(&str_to_native_datetime("2023-12-14 14:00:00"))
-        );
+    fn utc_from_local_offsets() {
+        let cases = [
+            ("2023-06-02 00:00:00", SYDNEY, "2023-06-01 14:00:00"), // winter AEDT off
+            ("2023-12-15 00:00:00", SYDNEY, "2023-12-14 13:00:00"), // summer AEDT on
+            ("2023-12-15 00:00:00", BRISBANE, "2023-12-14 14:00:00"), // no DST
+        ];
+        for (local, zone, expected) in cases {
+            assert_eq!(
+                utc_local(local, zone),
+                Utc.from_utc_datetime(&str_to_native_datetime(expected)),
+                "{local} in {zone}"
+            );
+        }
     }
 
     #[test]
@@ -144,10 +171,7 @@ use rust_decimal_macros::dec;
     )]
     fn test_sydney_ambiguous() {
         assert_eq!(
-            utc_from_local(
-                str_to_native_datetime("2023-04-02 02:30:00"),
-                "Australia/Sydney"
-            ),
+            utc_local("2023-04-02 02:30:00", SYDNEY),
             Utc.from_utc_datetime(&str_to_native_datetime("2023-04-01 16:30:00"))
         );
     }
@@ -156,16 +180,12 @@ use rust_decimal_macros::dec;
     #[should_panic]
     fn test_sydney_nonexistent() {
         assert_eq!(
-            utc_from_local(
-                str_to_native_datetime("2023-10-01 02:30:00"),
-                "Australia/Sydney"
-            ),
+            utc_local("2023-10-01 02:30:00", SYDNEY),
             Utc.from_utc_datetime(&str_to_native_datetime("2023-09-30 16:30:00"))
         );
     }
     #[test]
     fn test_time_of_use_across_midnight() {
-        let time_zone = "Australia/Sydney";
         let tariff = TariffFactory::time_of_use(
             &Window {
                 rate: dec!(0.4),
@@ -181,12 +201,12 @@ use rust_decimal_macros::dec;
 
         let smart_meter = vec![
             MeterMeasure {
-                utc_start: utc_from_local(str_to_native_datetime("2026-01-01 17:00:00"), time_zone), //peak
+                utc_start: utc_from_local(str_to_native_datetime("2026-01-01 17:00:00"), SYDNEY), //peak
                 import: dec!(5.0),
                 export: None,
             },
             MeterMeasure {
-                utc_start: utc_from_local(str_to_native_datetime("2026-01-01 23:00:00"), time_zone), //off-peak
+                utc_start: utc_from_local(str_to_native_datetime("2026-01-01 23:00:00"), SYDNEY), //off-peak
                 import: dec!(10.0),
                 export: None,
             },
@@ -194,44 +214,35 @@ use rust_decimal_macros::dec;
 
         // 5 * 0.4 (peak) + 10 * 0.2 (off-peak) + 1.0 (supply, 1 day) = 5.0
 
-        let tz = Tz::from_str(time_zone).unwrap();
-        let pricing_input = PricingInput::new(tz, &smart_meter);
-
+        let pricing_input = priced(&smart_meter, SYDNEY);
         assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(5.0));
     }
 
     #[test]
     fn test_sydney_brisbane_daily_light() {
         let tariff = get_tou_tariff(dec!(0.4), dec!(0.2), "16:00", "21:00");
-        let timezone = "Australia/Sydney";
         let smart_meter = vec![
             MeterMeasure {
-                utc_start: utc_from_local(str_to_native_datetime("2026-01-01 16:30:00"), timezone), //peak
+                utc_start: utc_local("2026-01-01 16:30:00", SYDNEY), //peak
                 import: dec!(10.0),
                 export: None,
             },
             MeterMeasure {
-                utc_start: utc_from_local(str_to_native_datetime("2026-01-01 21:30:00"), timezone), //off-peak
+                utc_start: utc_local("2026-01-01 21:30:00", SYDNEY), //off-peak
                 import: dec!(20.0),
                 export: None,
             },
         ];
-        let tz = Tz::from_str(timezone).unwrap();
-        let pricing_input = PricingInput::new(tz, &smart_meter);
+        let pricing_input = priced(&smart_meter, SYDNEY);
         assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(9.0));
-
-        let timezone = "Australia/Brisbane";
-        let tz = Tz::from_str(timezone).unwrap();
-        let pricing_input = PricingInput::new(tz, &smart_meter);
+        let pricing_input = priced(&smart_meter, BRISBANE);
         assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(11.0));
     }
 
     #[test]
     fn test_day_count() {
-        let timezone = "Australia/Sydney";
-        let smart_meter = generate_smart_meter(&GeneratorConfig::default()).unwrap();
-        let tz = Tz::from_str(timezone).unwrap();
-        let pricing_input = PricingInput::new(tz, &smart_meter);
+        let smart_meter = sm(&GeneratorConfig::default());
+        let pricing_input = priced(&smart_meter, SYDNEY);
 
         assert_eq!(pricing_input.days(), 365);
         assert_eq!(pricing_input.len(), 365 * 48);
@@ -239,11 +250,10 @@ use rust_decimal_macros::dec;
 
     #[test]
     fn test_singular_dates_count() {
-        let timezone = "Australia/Sydney";
-        let smart_meter = generate_smart_meter(&GeneratorConfig::default()).unwrap();
+        let smart_meter = sm(&GeneratorConfig::default());
 
-        let tz = Tz::from_str(timezone).unwrap();
-        let pricing_input = PricingInput::new(tz, &smart_meter);
+        let pricing_input = priced(&smart_meter, SYDNEY);
+
         let mut map: HashMap<NaiveDate, u8> = HashMap::new();
         for r in pricing_input.readings() {
             *map.entry(r.local.date).or_default() += 1;
@@ -265,14 +275,18 @@ use rust_decimal_macros::dec;
 
     #[test]
     fn test_flat() {
-        let smart_meter = generate_smart_meter(&GeneratorConfig {
-            end: "2026-01-02 00:00:00".into(),
-            ..Default::default()
-        }).unwrap();
+        let smart_meter = generate_smart_meter(
+            &GeneratorConfig {
+                end: "2026-01-02 00:00:00".into(),
+                ..Default::default()
+            },
+            SYDNEY.into(),
+        )
+        .unwrap();
         let flat_tariff = TariffFactory::flat(dec!(1), dec!(1.0)).unwrap();
 
-        let tz = Tz::from_str("Australia/Sydney").unwrap();
-        let pricing_input = PricingInput::new(tz, &smart_meter);
+        let pricing_input = priced(&smart_meter, SYDNEY);
+
         //24*0.2
         assert_eq!(price(&flat_tariff, &pricing_input).unwrap(), dec!(25));
     }
@@ -282,8 +296,7 @@ use rust_decimal_macros::dec;
         let tariff = TariffFactory::flat(dec!(0.2), dec!(1.0)).unwrap();
 
         let smart_meter: Vec<MeterMeasure> = vec![];
-        let tz = Tz::from_str("Australia/Sydney").unwrap();
-        let pricing_input = PricingInput::new(tz, &smart_meter);
+        let pricing_input = priced(&smart_meter, SYDNEY);
 
         assert!(matches!(
             price(&tariff, &pricing_input),
@@ -293,62 +306,25 @@ use rust_decimal_macros::dec;
 
     #[test]
     fn test_weekend_weekday_both_full_day() {
-        // 1 week meter
-        let smart_meter = generate_smart_meter(&GeneratorConfig {
-            end: "2026-01-08 00:00:00".into(),
-            ..Default::default()
-        }).unwrap();
-        let flat_rate = dec!(0.2);
-
-        let flat_tariff = || -> Result<Tariff, TariffError> {
-            TariffBuilder::default()
-                .daily_supply(dec!(1.0))
-                .rate_period(|s| {
-                    s.rates(&[(flat_rate, dec!(0))]).time_band(
-                        HourMinute::min(),
-                        HourMinute::max(),
-                        Some(WeekDays::working_days()),
-                    )
-                })?
-                .rate_period(|s| {
-                    s.rates(&[(dec!(0.5), dec!(0))]).time_band(
-                        HourMinute::min(),
-                        HourMinute::max(),
-                        Some(WeekDays::weekend()),
-                    )
-                })?
-                .build()
-        };
-        assert!(matches!(&flat_tariff(), Ok(_)));
-
-        let tz = Tz::from_str("Australia/Sydney").unwrap();
-        let pricing_input = PricingInput::new(tz, &smart_meter);
-        // (0.2*5+0.5*2)*24 +7*1 = 2*24+7 = 55
-        assert_eq!(
-            price(&flat_tariff().unwrap(), &pricing_input).unwrap(),
-            dec!(55)
-        );
+        let smart_meter = generate_smart_meter(
+            &GeneratorConfig {
+                end: "2026-01-08 00:00:00".into(),
+                ..Default::default()
+            },
+            SYDNEY,
+        )
+        .unwrap();
+        let tariff = flat_tariff(dec!(0.2), Some(dec!(0.5)), dec!(1.0)).unwrap();
+        let input = priced(&smart_meter, SYDNEY);
+        // (0.2*5 + 0.5*2)*24 + 7*1 = 55
+        assert_eq!(price(&tariff, &input).unwrap(), dec!(55));
     }
-
     #[test]
     fn test_only_weekday_full_day() {
-        let flat_rate = dec!(0.2);
 
-        let flat_tariff = || -> Result<Tariff, TariffError> {
-            TariffBuilder::default()
-                .daily_supply(dec!(1.0))
-                .rate_period(|s| {
-                    s.rates(&[(flat_rate, dec!(0))]).time_band(
-                        HourMinute::min(),
-                        HourMinute::max(),
-                        Some(WeekDays::working_days()),
-                    )
-                })?
-                .build()
-        };
-
+        let tariff = flat_tariff(dec!(0.2), None, dec!(1.0));
         assert!(matches!(
-            &flat_tariff(),
+            &tariff,
             Err(TariffError::Gap(chrono::Weekday::Sat, _))
         ));
     }
@@ -381,15 +357,18 @@ use rust_decimal_macros::dec;
 
     #[test]
     fn test_multi_days() {
-        let smart_meter = generate_smart_meter(&GeneratorConfig {
-            //end: "2026-01-08 00:00:00".into(),
-            ..Default::default()
-        }).unwrap();
+        let smart_meter = generate_smart_meter(
+            &GeneratorConfig {
+                //end: "2026-01-08 00:00:00".into(),
+                ..Default::default()
+            },
+            SYDNEY.into(),
+        )
+        .unwrap();
 
         let tariff = TariffFactory::flat(dec!(0.0), dec!(1)).unwrap();
 
-        let tz = Tz::from_str("Australia/Sydney").unwrap();
-        let pricing_input = PricingInput::new(tz, &smart_meter);
+        let pricing_input = priced(&smart_meter, SYDNEY);
 
         assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(365));
     }
@@ -407,16 +386,19 @@ use rust_decimal_macros::dec;
             .build()
             .unwrap();
 
-        let smart_meter = generate_smart_meter(&GeneratorConfig {
-            start: "2026-01-01 00:00:00".into(),
-            end: "2026-01-02 00:00:00".into(),
-            frequency: 60,
-            daily_kwh: dec!(24),
-            ..Default::default()
-        }).unwrap();
+        let smart_meter = generate_smart_meter(
+            &GeneratorConfig {
+                start: "2026-01-01 00:00:00".into(),
+                end: "2026-01-02 00:00:00".into(),
+                frequency: 60,
+                daily_kwh: dec!(24),
+                ..Default::default()
+            },
+            SYDNEY.into(),
+        )
+        .unwrap();
         // 12*0.2 +12*1 + 1 = 15.4
-        let tz = Tz::from_str("Australia/Sydney").unwrap();
-        let pricing_input = PricingInput::new(tz, &smart_meter);
+        let pricing_input = priced(&smart_meter, SYDNEY);
 
         assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(15.4));
     }
@@ -434,33 +416,42 @@ use rust_decimal_macros::dec;
             .build()
             .unwrap();
 
-        let smart_meter = generate_smart_meter(&GeneratorConfig {
-            start: "2026-01-01 00:00:00".into(),
-            end: "2026-04-01 00:00:00".into(),
-            frequency: 60,
-            daily_kwh: dec!(24),
-            ..Default::default()
-        }).unwrap();
-        // 10*3*0.2*24 +(21+18+21)*0.4*24 + 31+28+31 = 120 + 480 + 90 = 689
-        let tz = Tz::from_str("Australia/Sydney").unwrap();
-        let pricing_input = PricingInput::new(tz, &smart_meter);
+        let smart_meter = generate_smart_meter(
+            &GeneratorConfig {
+                start: "2026-01-01 00:00:00".into(),
+                end: "2026-04-01 00:00:00".into(),
+                frequency: 60,
+                daily_kwh: dec!(24),
+                ..Default::default()
+            },
+            SYDNEY.into(),
+        )
+        .unwrap();
+        // Jan (31d): 200*0.2 + (744-200)*0.4 = 257.6
+        // Feb (28d): 200*0.2 + (672-200)*0.4 = 228.8
+        // Mar (31d): same as Jan = 257.6
+        // Variable = 744, Supply = 90 days * 1.0 = 90, Total = 834
+        let pricing_input = priced(&smart_meter, SYDNEY);
 
         assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(834));
     }
 
     #[test]
     fn price_export() {
-        let smart_meter = generate_smart_meter(&GeneratorConfig {
-            end: "2027-01-01 00:00:00".into(),
-            with_export: true,
-            system_capacity: 1,
-            daily_kwh: dec!(0),
-            ..Default::default()
-        }).unwrap();
+        let smart_meter = generate_smart_meter(
+            &GeneratorConfig {
+                end: "2027-01-01 00:00:00".into(),
+                with_export: true,
+                system_capacity: 1,
+                daily_kwh: dec!(0),
+                ..Default::default()
+            },
+            SYDNEY.into(),
+        )
+        .unwrap();
         let flat_tariff = TariffFactory::flat_export(dec!(1), dec!(0.0), dec!(1)).unwrap();
 
-        let tz = Tz::from_str("Australia/Sydney").unwrap();
-        let pricing_input = PricingInput::new(tz, &smart_meter);
+        let pricing_input = priced(&smart_meter, SYDNEY);
 
         assert_eq!(
             price(&flat_tariff, &pricing_input).unwrap().round(),

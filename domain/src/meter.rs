@@ -30,7 +30,7 @@ impl MeterMeasure {
             date: local.date_naive(),
             hour_minute: HourMinute::new_unchecked(local.hour(), local.minute()),
             weekday: local.weekday(),
-            datetime: local
+            datetime: local,
         }
     }
 }
@@ -40,7 +40,7 @@ pub struct LocalMeasure {
     pub date: NaiveDate,
     pub hour_minute: HourMinute,
     pub weekday: Weekday,
-    pub datetime: DateTime<Tz>
+    pub datetime: DateTime<Tz>,
 }
 
 #[derive(Debug, Clone)]
