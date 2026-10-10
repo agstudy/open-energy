@@ -6,6 +6,7 @@ use crate::tariff::TariffDirection;
 use chrono::Datelike;
 use chrono::NaiveDate;
 use domain::meter::PricingInput;
+use domain::meter::Reading;
 use rust_decimal::Decimal;
 
 struct Acc {
@@ -16,57 +17,59 @@ struct Acc {
     export_kwh: Decimal,
 }
 
-fn price_variable(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc, PricingError> {
-    let is_export_empty = tariff.export_tariff().is_empty();
-    let import_cost = pricing_input.readings().iter().try_fold(
-        Acc {
-            import_price: Decimal::ZERO,
-            import_kwh: Decimal::ZERO,
-            prev_date: None,
-            export_kwh: Decimal::ZERO,
-            export_price: Decimal::ZERO,
-        },
-        |mut acc, r| {
-            if let Some(period) = tariff.consumption_period() {
-                let reset = match period {
-                    ConsumptionPeriod::Day => acc.prev_date != Some(r.local.date),
-                    ConsumptionPeriod::Month => acc.prev_date.is_none_or(|d| {
-                        d.year() != r.local.date.year() || d.month() != r.local.date.month()
-                    }),
-                };
-                if reset {
-                    acc.import_kwh = Decimal::ZERO;
-                    acc.export_kwh = Decimal::ZERO;
-                }
-                acc.prev_date = Some(r.local.date);
-            }
+fn reset_acc(r: &Reading, tariff: &Tariff, acc: &mut Acc) {
+    if let Some(period) = tariff.consumption_period() {
+        let reset = match period {
+            ConsumptionPeriod::Day => acc.prev_date != Some(r.local.date),
+            ConsumptionPeriod::Month => acc.prev_date.is_none_or(|d| {
+                d.year() != r.local.date.year() || d.month() != r.local.date.month()
+            }),
+        };
+        if reset {
+            acc.import_kwh = Decimal::ZERO;
+            acc.export_kwh = Decimal::ZERO;
+        }
+        acc.prev_date = Some(r.local.date);
+    }
+}
 
-            let rate = tariff.rate_at(
-                TariffDirection::Import,
+fn price_variable(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc, PricingError> {
+    let has_export = !tariff.export_tariff().is_empty();
+    let mut acc = Acc {
+        import_price: Decimal::ZERO,
+        import_kwh: Decimal::ZERO,
+        prev_date: None,
+        export_kwh: Decimal::ZERO,
+        export_price: Decimal::ZERO,
+    };
+    for r in pricing_input.readings() {
+        reset_acc(r, tariff, &mut acc);
+        // import
+        let import_cost = tariff.cost_at(
+            TariffDirection::Import,
+            r.local.hour_minute,
+            r.local.weekday,
+            acc.import_kwh,
+            r.meter.import,
+        )?;
+        acc.import_price += import_cost;
+        acc.import_kwh += r.meter.import;
+
+        // export
+        if has_export && let Some(export) = r.meter.export {
+            let export_cost = tariff.cost_at(
+                TariffDirection::Export,
                 r.local.hour_minute,
                 r.local.weekday,
-                acc.import_kwh,
+                acc.export_kwh,
+                export
             )?;
-            acc.import_price += r.meter.import * rate;
-            acc.import_kwh += r.meter.import;
+            acc.export_price += export_cost;
+            acc.export_kwh += export;
+        }
+    }
 
-            if !is_export_empty {
-                let export_rate = tariff.rate_at(
-                    TariffDirection::Export,
-                    r.local.hour_minute,
-                    r.local.weekday,
-                    acc.export_kwh,
-                )?;
-                if let Some(export) = r.meter.export {
-                    acc.export_price += export * export_rate;
-                    acc.export_kwh += export;
-                }
-            }
-
-            Ok::<Acc, PricingError>(acc)
-        },
-    )?;
-    Ok(import_cost)
+    Ok(acc)
 }
 /// Prices the given input against a tariff.
 ///
@@ -82,7 +85,8 @@ pub fn price(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Decimal, P
 
     let supply_charge = tariff.supply_rate() * Decimal::from(pricing_input.days());
     let result = price_variable(tariff, pricing_input)?;
-    Ok(result.import_price - result.export_price + supply_charge)
+    let result = result.import_price - result.export_price + supply_charge;
+    Ok(result.round_dp(2))
 }
 
 #[cfg(test)]
@@ -94,8 +98,6 @@ mod tests {
         tariff_factory::{TariffFactory, Window},
         tests_utils::{get_tou_tariff, str_to_native_date, str_to_native_datetime, utc_from_local},
     };
-
-
 
     use super::*;
     use domain::{hour_minute::HourMinute, meter::MeterMeasure};
@@ -202,12 +204,12 @@ mod tests {
 
         let smart_meter = vec![
             MeterMeasure {
-                utc_start: utc_from_local(str_to_native_datetime("2026-01-01 17:00:00"), SYDNEY), //peak
+                utc_start: utc_local("2026-01-01 17:00:00", SYDNEY),
                 import: dec!(5.0),
                 export: None,
             },
             MeterMeasure {
-                utc_start: utc_from_local(str_to_native_datetime("2026-01-01 23:00:00"), SYDNEY), //off-peak
+                utc_start: utc_local("2026-01-01 23:00:00", SYDNEY),
                 import: dec!(10.0),
                 export: None,
             },
@@ -276,14 +278,10 @@ mod tests {
 
     #[test]
     fn test_flat() {
-        let smart_meter = generate_smart_meter(
-            &GeneratorConfig {
-                end: "2026-01-02 00:00:00".into(),
-                ..Default::default()
-            },
-            SYDNEY.into(),
-        )
-        .unwrap();
+        let smart_meter = sm(&GeneratorConfig {
+            end: "2026-01-02 00:00:00".into(),
+            ..Default::default()
+        });
         let flat_tariff = TariffFactory::flat(dec!(1), dec!(1.0)).unwrap();
 
         let pricing_input = priced(&smart_meter, SYDNEY);
@@ -322,7 +320,6 @@ mod tests {
     }
     #[test]
     fn test_only_weekday_full_day() {
-
         let tariff = flat_tariff(dec!(0.2), None, dec!(1.0));
         assert!(matches!(
             &tariff,
@@ -458,5 +455,29 @@ mod tests {
             price(&flat_tariff, &pricing_input).unwrap().round(),
             dec!(-1493)
         );
+    }
+
+    #[test]
+    fn test_multiflat_split_reading_at_threshold() {
+        let smart_meter = sm(&GeneratorConfig {
+            end: "2026-01-02 00:00:00".into(),
+            daily_kwh: dec!(36),
+            ..Default::default()
+        });
+        let pricing_input = priced(&smart_meter, SYDNEY);
+
+        let multiflat_tariff = TariffBuilder::default()
+            .daily_supply(dec!(1.0))
+            .rate_period(|s| {
+                s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])
+                    .time_band(HourMinute::min(), HourMinute::max(), None)
+            })
+            .unwrap()
+            .consumption_period(ConsumptionPeriod::Day)
+            .build()
+            .unwrap();
+
+        // 10 *0.2 + 1* (36-10) +1 = 2+ 26 +1 = 29
+        assert_eq!(price(&multiflat_tariff, &pricing_input).unwrap(), dec!(29));
     }
 }
