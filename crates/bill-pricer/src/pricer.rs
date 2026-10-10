@@ -480,4 +480,27 @@ mod tests {
         // 10 *0.2 + 1* (36-10) +1 = 2+ 26 +1 = 29
         assert_eq!(price(&multiflat_tariff, &pricing_input).unwrap(), dec!(29));
     }
+
+        #[test]
+    fn test_tiered_priscing_with_no_consumption_period() {
+        let smart_meter = sm(&GeneratorConfig {
+            end: "2026-01-02 00:00:00".into(),
+            daily_kwh: dec!(36),
+            ..Default::default()
+        });
+        let pricing_input = priced(&smart_meter, SYDNEY);
+
+        let multiflat_tariff = TariffBuilder::default()
+            .daily_supply(dec!(1.0))
+            .rate_period(|s| {
+                s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])
+                    .time_band(HourMinute::min(), HourMinute::max(), None)
+            })
+            .unwrap()
+            .build()
+            .unwrap();
+
+        // 10 *0.2 + 1* (36-10) +1 = 2+ 26 +1 = 29
+        assert_eq!(price(&multiflat_tariff, &pricing_input).unwrap(), dec!(29));
+    }
 }
