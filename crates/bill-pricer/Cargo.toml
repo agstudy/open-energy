@@ -19,3 +19,12 @@ domain = { path = "../../domain" }
 [dev-dependencies]
 csv = { workspace = true }
 gen-meter = { path = "../gen-meter" }
+criterion = { version = "0.8", features = ["html_reports"] }
+
+[lib]
+bench = false
+
+
+[[bench]]
+name = "pricing"
+harness = false

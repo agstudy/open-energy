@@ -17,3 +17,8 @@ meter-parser = { path = "../meter-parser" }
 bill-pricer = { path = "../bill-pricer" }
 domain = { path = "../../domain" }
 gen-meter = {path = "../gen-meter"}
+
+
+[[bin]]
+name = "energy-cli"
+bench = false
