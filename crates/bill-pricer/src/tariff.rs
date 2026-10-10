@@ -73,7 +73,7 @@ impl RatePeriod {
 pub struct Tariff {
     import: Vec<RatePeriod>,
     export: Option<Vec<RatePeriod>>,
-    discount: Option<Vec<Discount>>,
+    discount: Option<Vec<Discount>>, // todo: apply discounts
     supply_rate: Decimal,
     cons_period: Option<ConsumptionPeriod>,
 }
@@ -123,8 +123,6 @@ pub enum TariffError {
     TierOrder,
     #[error("Missing rates")]
     EmptyRates,
-    #[error("No valid Block rate for consumption: {0}")]
-    EmptyBlockRates(Decimal),
     #[error(transparent)]
     InvalidTimeBand(#[from] InvalidTimeBand),
 }
@@ -256,8 +254,6 @@ fn group_per_weekday(rps: &[RatePeriod]) -> [(Weekday, Vec<&RatePeriod>); 7] {
 /// 5. return Ok
 /// ```
 fn validate_tariff(day: Weekday, rps: &[&RatePeriod]) -> Result<(), TariffError> {
-    // rps.sort_by_key(|rp| rp.time_band.start());
-
     let hm = |val| from_minute_of_day_unchecked(val);
 
     let mut cursor: u32 = 0;

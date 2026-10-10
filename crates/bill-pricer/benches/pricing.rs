@@ -7,8 +7,8 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use domain::{HourMinute, meter::PricingInput};
 use gen_meter::generator::{GeneratorConfig, generate_smart_meter};
 use rust_decimal_macros::dec;
-use std::str::FromStr;
 use std::hint::black_box;
+use std::str::FromStr;
 
 const SYDNEY: &str = "Australia/Sydney";
 
@@ -74,8 +74,6 @@ fn criterion_benchmark(c: &mut Criterion) {
         });
     }
 }
-
-
 
 criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);
