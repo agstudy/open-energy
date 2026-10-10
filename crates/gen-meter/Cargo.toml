@@ -11,3 +11,6 @@ chrono = { workspace = true }
 chrono-tz = { workspace = true }
 domain = { path = "../../domain" }
 csv = { workspace = true }
+
+[lib]
+bench = false

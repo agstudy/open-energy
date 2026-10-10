@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{InvalidTimeBand, TimeBand, WeekDays};
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct RateBlock {
     pub rate: Decimal,
     pub lower_band: Decimal,
@@ -73,7 +73,7 @@ impl RatePeriod {
 pub struct Tariff {
     import: Vec<RatePeriod>,
     export: Option<Vec<RatePeriod>>,
-    discount: Option<Vec<Discount>>,
+    discount: Option<Vec<Discount>>, // todo: apply discounts
     supply_rate: Decimal,
     cons_period: Option<ConsumptionPeriod>,
 }
@@ -116,17 +116,29 @@ pub enum TariffError {
     #[error("bands leave a gap starting at day {0} at {1}")]
     Gap(Weekday, HourMinute),
     #[error("There is no matching rate period covering: {0}")]
-    NoMatchingPeriod(HourMinute),
+    NoMatchingPeriod(Weekday, HourMinute),
     #[error("bands overlap at {0}")]
     Overlap(Weekday, HourMinute),
     #[error("tier thresholds out of order")]
     TierOrder,
     #[error("Missing rates")]
     EmptyRates,
-    #[error("No valid Block rate for consumption: {0}")]
-    EmptyBlockRates(Decimal),
     #[error(transparent)]
     InvalidTimeBand(#[from] InvalidTimeBand),
+}
+
+fn cumulative_cost(rates: &[RateBlock], up_to: Decimal) -> Decimal {
+    let mut cost = Decimal::ZERO;
+
+    for (i, band) in rates.iter().enumerate() {
+        let lower = band.lower_band;
+        if lower >= up_to {
+            break;
+        }
+        let upper = rates.get(i + 1).map_or(up_to, |b| b.lower_band.min(up_to));
+        cost += (upper - lower) * band.rate;
+    }
+    cost
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -135,49 +147,38 @@ pub enum TariffDirection {
     Export,
 }
 impl Tariff {
-    /// Returns the applicable rate for `(hour, minute)` on the given `weekday`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TariffError::NoMatchingPeriod`] if no rate period covers
-    /// `at_hm` on `weekday`, [`TariffError::EmptyRates`] if the matching
-    /// period has no rate blocks, or [`TariffError::Overlap`] if more than
-    /// one period matches.
-    pub fn rate_at(
+    pub fn period_at(
         &self,
         direction: TariffDirection,
-        at_hm: HourMinute,
+        hm: HourMinute,
         weekday: Weekday,
-        cons: Decimal,
-    ) -> Result<Decimal, TariffError> {
+    ) -> Result<&RatePeriod, TariffError> {
         let periods = match direction {
             TariffDirection::Import => self.import_tariff(),
             TariffDirection::Export => self.export_tariff(),
         };
-
-        let mut matches = periods.iter().filter(|p| p.applies_at(&at_hm, weekday));
-
+        let mut matches = periods.iter().filter(|p| p.applies_at(&hm, weekday));
         match (matches.next(), matches.next()) {
-            (None, _) => Err(TariffError::NoMatchingPeriod(at_hm)),
-            (Some(period), None) => {
-                if self.consumption_period().is_none() {
-                    period
-                        .rates
-                        .first()
-                        .ok_or(TariffError::EmptyRates)
-                        .map(|b| b.rate)
-                } else {
-                    period
-                        .rates
-                        .iter()
-                        .rfind(|v| v.lower_band <= cons)
-                        .ok_or(TariffError::EmptyBlockRates(cons))
-                        .map(|b| b.rate)
-                }
-            }
-            (Some(_), Some(_)) => Err(TariffError::Overlap(weekday, at_hm)),
+            (None, _) => Err(TariffError::NoMatchingPeriod(weekday, hm)),
+            (Some(p), None) => Ok(p),
+            (Some(_), Some(_)) => Err(TariffError::Overlap(weekday, hm)),
         }
     }
+
+    pub fn cost_at(
+        &self,
+        direction: TariffDirection,
+        hm: HourMinute,
+        weekday: Weekday,
+        consumed_before: Decimal,
+        delta: Decimal,
+    ) -> Result<Decimal, TariffError> {
+        let period = self.period_at(direction, hm, weekday)?;
+        let start = cumulative_cost(&period.rates, consumed_before);
+        let end = cumulative_cost(&period.rates, consumed_before + delta);
+        Ok(end - start)
+    }
+
     /// # Errors
     ///
     /// Returns [`TariffError::Gap`] if a day is not fully covered,
@@ -253,8 +254,6 @@ fn group_per_weekday(rps: &[RatePeriod]) -> [(Weekday, Vec<&RatePeriod>); 7] {
 /// 5. return Ok
 /// ```
 fn validate_tariff(day: Weekday, rps: &[&RatePeriod]) -> Result<(), TariffError> {
-    // rps.sort_by_key(|rp| rp.time_band.start());
-
     let hm = |val| from_minute_of_day_unchecked(val);
 
     let mut cursor: u32 = 0;
