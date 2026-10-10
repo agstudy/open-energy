@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{InvalidTimeBand, TimeBand, WeekDays};
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct RateBlock {
     pub rate: Decimal,
     pub lower_band: Decimal,

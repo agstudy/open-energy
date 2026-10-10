@@ -2,7 +2,7 @@ use domain::HourMinute;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 
-use crate::tariff::TariffBuilder;
+use crate::tariff::{ConsumptionPeriod, TariffBuilder};
 use crate::tariff::{Tariff, TariffError};
 
 pub struct TariffFactory;
@@ -10,6 +10,12 @@ pub struct TariffFactory;
 #[derive(Debug, Clone)]
 pub struct Window {
     pub rate: Decimal,
+    pub start: HourMinute,
+}
+
+#[derive(Debug, Clone)]
+pub struct WindowTiered {
+    pub rates: Vec<(Decimal, Decimal)>,
     pub start: HourMinute,
 }
 
@@ -90,6 +96,35 @@ impl TariffFactory {
         for (start, end) in peak.start.split_midnight(off_peak.start.prev()) {
             builder = builder
                 .rate_period(|s| s.rates(&[(peak.rate, dec!(0))]).time_band(start, end, None))?;
+        }
+
+        builder.build()
+    }
+
+    /// Builds a time-of-use-tired tariff with the given peak and off-peak `WindowTiered`
+    /// and daily supply rate.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TariffError`]: direct use of tariffbuilder
+    ///
+    pub fn time_of_use_multiflat(
+        peak: &WindowTiered,
+        off_peak: &WindowTiered,
+        supply_rate: Decimal,
+    ) -> Result<Tariff, TariffError> {
+        let mut builder = TariffBuilder::default()
+            .daily_supply(supply_rate)
+            .consumption_period(ConsumptionPeriod::Day);
+
+        // Off-peak runs from off_peak.start until peak begins (may cross midnight).
+        for (start, end) in off_peak.start.split_midnight(peak.start.prev()) {
+            builder =
+                builder.rate_period(|s| s.rates(&off_peak.rates).time_band(start, end, None))?;
+        }
+        // Peak runs from peak.start until off-peak resumes (may cross midnight).
+        for (start, end) in peak.start.split_midnight(off_peak.start.prev()) {
+            builder = builder.rate_period(|s| s.rates(&peak.rates).time_band(start, end, None))?;
         }
 
         builder.build()

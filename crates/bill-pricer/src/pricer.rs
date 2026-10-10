@@ -62,7 +62,7 @@ fn price_variable(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc, 
                 r.local.hour_minute,
                 r.local.weekday,
                 acc.export_kwh,
-                export
+                export,
             )?;
             acc.export_price += export_cost;
             acc.export_kwh += export;
@@ -95,7 +95,7 @@ mod tests {
     use crate::{
         WeekDays,
         tariff::{TariffBuilder, TariffError},
-        tariff_factory::{TariffFactory, Window},
+        tariff_factory::{TariffFactory, Window, WindowTiered},
         tests_utils::{get_tou_tariff, str_to_native_date, str_to_native_datetime, utc_from_local},
     };
 
@@ -481,7 +481,7 @@ mod tests {
         assert_eq!(price(&multiflat_tariff, &pricing_input).unwrap(), dec!(29));
     }
 
-        #[test]
+    #[test]
     fn test_tiered_priscing_with_no_consumption_period() {
         let smart_meter = sm(&GeneratorConfig {
             end: "2026-01-02 00:00:00".into(),
@@ -503,4 +503,31 @@ mod tests {
         // 10 *0.2 + 1* (36-10) +1 = 2+ 26 +1 = 29
         assert_eq!(price(&multiflat_tariff, &pricing_input).unwrap(), dec!(29));
     }
+    #[test]
+    fn shared_counter_crosses_tier_across_bands() {
+        let smart_meter = sm(&GeneratorConfig {
+            end: "2026-01-02 00:00:00".into(),
+            daily_kwh: dec!(12),
+            ..Default::default()
+        });
+        let pricing_input = priced(&smart_meter, SYDNEY);
+
+        let tariff = TariffFactory::time_of_use_multiflat(
+            &WindowTiered {
+                rates: vec![(dec!(0.5), dec!(0)), (dec!(0.8), dec!(10))],
+                start: HourMinute::new(16, 0).unwrap(),
+            }, // peak: 16:00–23:59
+            &WindowTiered {
+                rates: vec![(dec!(0.2), dec!(0)), (dec!(0.3), dec!(10))],
+                start: HourMinute::new(0, 0).unwrap(),
+            }, // off-peak: 00:00–15:59
+            dec!(1.0),
+        )
+        .unwrap();
+
+        // 8 *0.2(<16h) + 2*0.5(16h-20h)+2*0.8(20h-24h)+1 =1.6+1+1.6+1=5.2
+        assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(5.2));
+    }
+
+    
 }
