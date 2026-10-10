@@ -187,6 +187,7 @@ mod tests {
             Utc.from_utc_datetime(&str_to_native_datetime("2023-09-30 16:30:00"))
         );
     }
+   
     #[test]
     fn test_time_of_use_across_midnight() {
         let tariff = TariffFactory::time_of_use(
@@ -318,6 +319,7 @@ mod tests {
         // (0.2*5 + 0.5*2)*24 + 7*1 = 55
         assert_eq!(price(&tariff, &input).unwrap(), dec!(55));
     }
+    
     #[test]
     fn test_only_weekday_full_day() {
         let tariff = flat_tariff(dec!(0.2), None, dec!(1.0));
@@ -326,6 +328,7 @@ mod tests {
             Err(TariffError::Gap(chrono::Weekday::Sat, _))
         ));
     }
+    
     #[test]
     fn test_alldays_weekend_band() {
         let flat_rate = dec!(0.2);
@@ -503,6 +506,7 @@ mod tests {
         // 10 *0.2 + 1* (36-10) +1 = 2+ 26 +1 = 29
         assert_eq!(price(&multiflat_tariff, &pricing_input).unwrap(), dec!(29));
     }
+   
     #[test]
     fn shared_counter_crosses_tier_across_bands() {
         let smart_meter = sm(&GeneratorConfig {
@@ -528,6 +532,56 @@ mod tests {
         // 8 *0.2(<16h) + 2*0.5(16h-20h)+2*0.8(20h-24h)+1 =1.6+1+1.6+1=5.2
         assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(5.2));
     }
+
+    #[test]
+    fn test_good_reset_tiered_daylight_saving() {
+        let smart_meter = sm(&GeneratorConfig {
+            start: "2026-04-04 00:00:00".into(),
+            end: "2026-04-07 00:00:00".into(),
+            daily_kwh: dec!(24),
+            ..Default::default()
+        });
+        let pricing_input = priced(&smart_meter, SYDNEY);
+
+        let multiflat_tariff = TariffBuilder::default()
+            .daily_supply(dec!(1.0))
+            .consumption_period(ConsumptionPeriod::Day)
+            .rate_period(|s| {
+                s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])
+                    .time_band(HourMinute::min(), HourMinute::max(), None)
+            })
+            .unwrap()
+            .build()
+            .unwrap();
+
+        // 10 *0.2 + 14x1 +1 +10x0.2+15*1+1+10 *0.2 + 14x1 +1= 17+ 18+ 17 = 52 
+        assert_eq!(price(&multiflat_tariff, &pricing_input).unwrap(), dec!(52));
+    }
+
+        #[test]
+    fn test_good_no_daily_reset_multiflat() {
+        let smart_meter = sm(&GeneratorConfig {
+            start: "2026-01-01 00:00:00".into(),
+            end: "2026-01-03 00:00:00".into(),
+            daily_kwh: dec!(24),
+            ..Default::default()
+        });
+        let pricing_input = priced(&smart_meter, SYDNEY);
+
+        let multiflat_tariff = TariffBuilder::default()
+            .daily_supply(dec!(1.0))
+            .rate_period(|s| {
+                s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])
+                    .time_band(HourMinute::min(), HourMinute::max(), None)
+            })
+            .unwrap()
+            .build()
+            .unwrap();
+
+        // 10 *0.2 + 14x1 + 1 + 24x1 +1 =  
+        assert_eq!(price(&multiflat_tariff, &pricing_input).unwrap(), dec!(42));
+    }
+
 
     
 }
