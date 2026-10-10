@@ -89,7 +89,10 @@ fn validate_config(config: &GeneratorConfig) -> Result<(), ConfigError> {
     Ok(())
 }
 
-pub fn generate_smart_meter(config: &GeneratorConfig, tz_str: &str) -> Result<Vec<MeterMeasure>, GeneratorError> {
+pub fn generate_smart_meter(
+    config: &GeneratorConfig,
+    tz_str: &str,
+) -> Result<Vec<MeterMeasure>, GeneratorError> {
     validate_config(config)?;
 
     let mut utc_start = utc_from_local_str(&config.start, tz_str)?;
@@ -242,12 +245,15 @@ mod tests {
     use domain::HourMinute;
 
     fn gen_meter(cap: u32, avg_kwh: u32) -> Vec<MeterMeasure> {
-        generate_smart_meter(&GeneratorConfig {
-            with_export: true,
-            system_capacity: cap,
-            daily_kwh: Decimal::from(avg_kwh),
-            ..Default::default()
-        },"Australia/Sydney".into())
+        generate_smart_meter(
+            &GeneratorConfig {
+                with_export: true,
+                system_capacity: cap,
+                daily_kwh: Decimal::from(avg_kwh),
+                ..Default::default()
+            },
+            "Australia/Sydney".into(),
+        )
         .unwrap()
     }
 
@@ -329,15 +335,18 @@ mod tests {
     }
     #[test]
     fn test_midday_midnight_smart_meter() {
-        let sm = generate_smart_meter(&GeneratorConfig {
-            with_export: true,
-            frequency: 30,
-            system_capacity: 10,
-            daily_kwh: Decimal::from(24),
-            end: "2026-01-02 00:00:00".into(),
+        let sm = generate_smart_meter(
+            &GeneratorConfig {
+                with_export: true,
+                frequency: 30,
+                system_capacity: 10,
+                daily_kwh: Decimal::from(24),
+                end: "2026-01-02 00:00:00".into(),
 
-            ..Default::default()
-        },"Australia/Sydney".into())
+                ..Default::default()
+            },
+            "Australia/Sydney".into(),
+        )
         .unwrap();
 
         let mut middday_export = sm.iter().filter(|&m| {

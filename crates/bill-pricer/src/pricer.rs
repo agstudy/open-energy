@@ -17,6 +17,30 @@ struct Acc {
     export_kwh: Decimal,
 }
 
+#[derive(Debug, Clone)]
+pub struct PricingResult {
+    pub import: Decimal,
+    pub import_kwh: Decimal,
+    pub export: Decimal,
+    pub export_kwh: Decimal,
+    pub fixed_bill: Decimal,
+    pub variable_bill: Decimal,
+    pub total_bill: Decimal
+}
+
+use std::fmt;
+
+impl std::fmt::Display for PricingResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Pricing Result")?;
+        writeln!(f, "  Import:  {:>12} ({:>10} kWh)", self.import, self.import_kwh)?;
+        writeln!(f, "  Export:  {:>12} ({:>10} kWh)", self.export, self.export_kwh)?;
+        writeln!(f, "  Fixed:   {:>12}", self.fixed_bill)?;
+        writeln!(f, "  Variable:{:>12}", self.variable_bill)?;
+        write!(f,   "  Total:   {:>12}", self.total_bill)
+    }
+}
+
 fn reset_acc(r: &Reading, tariff: &Tariff, acc: &mut Acc) {
     if let Some(period) = tariff.consumption_period() {
         let reset = match period {
@@ -78,15 +102,25 @@ fn price_variable(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc, 
 /// Returns [`PricingError`] if the tariff does not fully cover the
 /// pricing input's time range, or if any day is not covered by
 /// non-overlapping bands.
-pub fn price(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Decimal, PricingError> {
+pub fn price(tariff: &Tariff, pricing_input: &PricingInput) -> Result<PricingResult, PricingError> {
     if pricing_input.is_empty() {
         return Err(PricingError::NoData);
     }
 
     let supply_charge = tariff.supply_rate() * Decimal::from(pricing_input.days());
     let result = price_variable(tariff, pricing_input)?;
-    let result = result.import_price - result.export_price + supply_charge;
-    Ok(result.round_dp(2))
+    let total_bill = result.import_price - result.export_price + supply_charge;
+
+
+    Ok( PricingResult {
+        fixed_bill : supply_charge.round_dp(2) , 
+        export: result.export_price.round_dp(2), 
+        import_kwh: result.import_kwh.round_dp(2),
+        import : result.import_price.round_dp(2),
+        variable_bill : (result.import_price - result.export_price).round_dp(2),
+        export_kwh : result.export_kwh.round_dp(2), 
+        total_bill : total_bill.round_dp(2)
+    })
 }
 
 #[cfg(test)]
@@ -104,7 +138,7 @@ mod tests {
     use gen_meter::generator::{GeneratorConfig, generate_smart_meter};
     use rust_decimal_macros::dec;
 
-    use chrono::{NaiveDate, TimeZone, Utc};
+    use chrono::{NaiveDate, Utc};
     use chrono_tz::Tz;
     use std::{collections::HashMap, str::FromStr};
 
@@ -152,7 +186,6 @@ mod tests {
         b.build()
     }
 
-
     #[test]
     fn test_time_of_use_across_midnight() {
         let tariff = TariffFactory::time_of_use(
@@ -184,7 +217,7 @@ mod tests {
         // 5 * 0.4 (peak) + 10 * 0.2 (off-peak) + 1.0 (supply, 1 day) = 5.0
 
         let pricing_input = priced(&smart_meter, SYDNEY);
-        assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(5.0));
+        assert_eq!(price(&tariff, &pricing_input).unwrap().total_bill, dec!(5.0));
     }
 
     #[test]
@@ -203,9 +236,9 @@ mod tests {
             },
         ];
         let pricing_input = priced(&smart_meter, SYDNEY);
-        assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(9.0));
+        assert_eq!(price(&tariff, &pricing_input).unwrap().total_bill, dec!(9.0));
         let pricing_input = priced(&smart_meter, BRISBANE);
-        assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(11.0));
+        assert_eq!(price(&tariff, &pricing_input).unwrap().total_bill, dec!(11.0));
     }
 
     #[test]
@@ -253,7 +286,7 @@ mod tests {
         let pricing_input = priced(&smart_meter, SYDNEY);
 
         //24*1 +1 = 25
-        assert_eq!(price(&flat_tariff, &pricing_input).unwrap(), dec!(25));
+        assert_eq!(price(&flat_tariff, &pricing_input).unwrap().total_bill, dec!(25));
     }
 
     #[test]
@@ -282,9 +315,9 @@ mod tests {
         let tariff = flat_tariff(dec!(0.2), Some(dec!(0.5)), dec!(1.0)).unwrap();
         let input = priced(&smart_meter, SYDNEY);
         // (0.2*5 + 0.5*2)*24 + 7*1 = 55
-        assert_eq!(price(&tariff, &input).unwrap(), dec!(55));
+        assert_eq!(price(&tariff, &input).unwrap().total_bill, dec!(55));
     }
-    
+
     #[test]
     fn test_only_weekday_full_day() {
         let tariff = flat_tariff(dec!(0.2), None, dec!(1.0));
@@ -293,7 +326,7 @@ mod tests {
             Err(TariffError::Gap(chrono::Weekday::Sat, _))
         ));
     }
-    
+
     #[test]
     fn test_alldays_weekend_band() {
         let flat_rate = dec!(0.2);
@@ -336,7 +369,7 @@ mod tests {
 
         let pricing_input = priced(&smart_meter, SYDNEY);
 
-        assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(365));
+        assert_eq!(price(&tariff, &pricing_input).unwrap().total_bill, dec!(365));
     }
 
     #[test]
@@ -366,7 +399,7 @@ mod tests {
         // 12*0.2 +12*1 + 1 = 15.4
         let pricing_input = priced(&smart_meter, SYDNEY);
 
-        assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(15.4));
+        assert_eq!(price(&tariff, &pricing_input).unwrap().total_bill, dec!(15.4));
     }
 
     #[test]
@@ -399,7 +432,7 @@ mod tests {
         // Variable = 744, Supply = 90 days * 1.0 = 90, Total = 834
         let pricing_input = priced(&smart_meter, SYDNEY);
 
-        assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(834));
+        assert_eq!(price(&tariff, &pricing_input).unwrap().total_bill, dec!(834));
     }
 
     #[test]
@@ -420,7 +453,7 @@ mod tests {
         let pricing_input = priced(&smart_meter, SYDNEY);
 
         assert_eq!(
-            price(&flat_tariff, &pricing_input).unwrap().round(),
+            price(&flat_tariff, &pricing_input).unwrap().total_bill.round(),
             dec!(-1493)
         );
     }
@@ -446,7 +479,7 @@ mod tests {
             .unwrap();
 
         // 10 *0.2 + 1* (36-10) +1 = 2+ 26 +1 = 29
-        assert_eq!(price(&multiflat_tariff, &pricing_input).unwrap(), dec!(29));
+        assert_eq!(price(&multiflat_tariff, &pricing_input).unwrap().total_bill, dec!(29));
     }
 
     #[test]
@@ -469,9 +502,9 @@ mod tests {
             .unwrap();
 
         // 10 *0.2 + 1* (36-10) +1 = 2+ 26 +1 = 29
-        assert_eq!(price(&multiflat_tariff, &pricing_input).unwrap(), dec!(29));
+        assert_eq!(price(&multiflat_tariff, &pricing_input).unwrap().total_bill, dec!(29));
     }
-   
+
     #[test]
     fn shared_counter_crosses_tier_across_bands() {
         let smart_meter = sm(&GeneratorConfig {
@@ -495,7 +528,7 @@ mod tests {
         .unwrap();
 
         // 8 *0.2(<16h) + 2*0.5(16h-20h)+2*0.8(20h-24h)+1 =1.6+1+1.6+1=5.2
-        assert_eq!(price(&tariff, &pricing_input).unwrap(), dec!(5.2));
+        assert_eq!(price(&tariff, &pricing_input).unwrap().total_bill, dec!(5.2));
     }
 
     #[test]
@@ -519,11 +552,11 @@ mod tests {
             .build()
             .unwrap();
 
-        // 10 *0.2 + 14x1 +1 +10x0.2+15*1+1+10 *0.2 + 14x1 +1= 17+ 18+ 17 = 52 
-        assert_eq!(price(&multiflat_tariff, &pricing_input).unwrap(), dec!(52));
+        // 10 *0.2 + 14x1 +1 +10x0.2+15*1+1+10 *0.2 + 14x1 +1= 17+ 18+ 17 = 52
+        assert_eq!(price(&multiflat_tariff, &pricing_input).unwrap().total_bill, dec!(52));
     }
 
-        #[test]
+    #[test]
     fn test_good_no_daily_reset_multiflat() {
         let smart_meter = sm(&GeneratorConfig {
             start: "2026-01-01 00:00:00".into(),
@@ -543,10 +576,7 @@ mod tests {
             .build()
             .unwrap();
 
-        // 10 *0.2 + 14x1 + 1 + 24x1 +1 =  
-        assert_eq!(price(&multiflat_tariff, &pricing_input).unwrap(), dec!(42));
+        // 10 *0.2 + 14x1 + 1 + 24x1 +1 =
+        assert_eq!(price(&multiflat_tariff, &pricing_input).unwrap().total_bill, dec!(42));
     }
-
-
-    
 }

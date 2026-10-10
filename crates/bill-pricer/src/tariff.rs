@@ -161,7 +161,7 @@ impl Tariff {
         };
         let mut matches = periods.iter().filter(|p| p.applies_at(&hm, weekday));
         match (matches.next(), matches.next()) {
-            (None, _) => Err(TariffError::NoMatchingPeriod(weekday,hm)),
+            (None, _) => Err(TariffError::NoMatchingPeriod(weekday, hm)),
             (Some(p), None) => Ok(p),
             (Some(_), Some(_)) => Err(TariffError::Overlap(weekday, hm)),
         }

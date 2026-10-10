@@ -1,5 +1,6 @@
 use anyhow::Context;
 use anyhow::Result as AnyResult;
+use bill_pricer::pricer::PricingResult;
 use bill_pricer::pricer::price;
 use bill_pricer::tariff::{Tariff, TariffRaw};
 use bill_pricer::tariff_factory::{TariffFactory, Window};
@@ -176,7 +177,7 @@ fn main() -> AnyResult<()> {
         }
         Commands::Price { source, tariff, tz } => {
             let bill = run_price(source, tariff, &tz)?;
-            println!("bill is {}", bill.round_dp(2));
+            println!("\n{bill}");
         }
     }
     Ok(())
@@ -217,7 +218,7 @@ fn run_parse(path: &Path, verbose: bool) -> AnyResult<()> {
     Ok(())
 }
 
-fn run_price(source: SourceArgs, tariff: TariffCmd, tz: &str) -> AnyResult<Decimal>{
+fn run_price(source: SourceArgs, tariff: TariffCmd, tz: &str) -> AnyResult<PricingResult> {
     eprintln!("--- Pricing smart meter ---");
 
     let tariff = tariff.try_into()?;
