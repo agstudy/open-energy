@@ -89,6 +89,25 @@ fn validate_config(config: &GeneratorConfig) -> Result<(), ConfigError> {
     Ok(())
 }
 
+/// Generates a synthetic smart meter series for the half-open range `[config.start, config.end)`.
+///
+/// `config.start` and `config.end` are local times in the household time zone `tz_str`
+/// (an IANA name such as `Australia/Sydney`). Readings are spaced `config.frequency` minutes
+/// apart in UTC, so a daylight-saving day has 23 or 25 hours of readings in local time.
+///
+/// Consumption is flat: `config.daily_kwh` is spread evenly over the day's intervals.
+///
+/// If `config.with_export` is set, a typical-year solar profile of `config.system_capacity` kW is
+/// netted against each interval: `import` is the load not covered by solar and `export` is the
+/// surplus. The profile is matched on the solar file's own clock (fixed UTC+10, no daylight
+/// saving), independent of `tz_str`. Intervals with no solar entry, such as 29 February,
+/// are returned with `export: None`.
+///
+/// # Errors
+///
+/// Returns [`GeneratorError`] if the config is invalid, if `tz_str` or a local time cannot be
+/// parsed (including ambiguous or nonexistent local times), if `start` is not before `end`, or if
+/// the solar data cannot be read.
 pub fn generate_smart_meter(
     config: &GeneratorConfig,
     tz_str: &str,

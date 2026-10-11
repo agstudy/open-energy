@@ -147,6 +147,12 @@ pub enum TariffDirection {
     Export,
 }
 impl Tariff {
+    /// Returns the rate period of the given direction that applies at a time of day and weekday.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TariffError::NoMatchingPeriod`] if no period covers `hm` on `weekday`,
+    /// and [`TariffError::Overlap`] if more than one does.
     pub fn period_at(
         &self,
         direction: TariffDirection,
@@ -165,6 +171,16 @@ impl Tariff {
         }
     }
 
+    /// Returns the cost of consuming `delta` kWh in the period that applies at `hm` and `weekday`,
+    /// given `consumed_before` kWh already counted in the current reset period.
+    ///
+    /// The cost is the difference between the cumulative tier cost after and before the reading,
+    /// so a reading that crosses one or more tier thresholds is priced across them. The result is
+    /// not rounded.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Tariff::period_at`].
     pub fn cost_at(
         &self,
         direction: TariffDirection,
@@ -319,8 +335,8 @@ impl Default for RatePeriodBuilder {
 
 impl RatePeriodBuilder {
     #[must_use]
-    pub fn rates(mut self, rates: &[(Decimal, Decimal)]) -> Self {
-        self.rates = rates
+    pub fn rates(mut self, block_rates: &[(Decimal, Decimal)]) -> Self {
+        self.rates = block_rates
             .iter()
             .map(|(r, b)| RateBlock {
                 rate: *r,
@@ -442,6 +458,8 @@ mod tests {
     use std::str::FromStr;
 
     use rust_decimal_macros::dec;
+
+    use crate::tariff_factory::TariffFactory;
 
     use super::*;
 
@@ -589,5 +607,61 @@ mod tests {
             .build();
 
         assert!(matches!(result, Err(TariffError::EmptyRates)));
+    }
+
+    #[test]
+    fn test_cost_at_inside_one_tier() {
+        let blocks: Vec<(Decimal, Decimal)> = vec![(0.2, 0.0), (1.0, 10.0), (2.0, 20.0)]
+            .iter()
+            .map(|&(a, b)| (Decimal::try_from(a).unwrap(), Decimal::try_from(b).unwrap()))
+            .collect();
+        let tariff = TariffFactory::multiflat(&blocks, dec!(1.0)).unwrap();
+
+        let cost = |b: u32, d: u32| -> Decimal {
+            tariff
+                .cost_at(
+                    TariffDirection::Import,
+                    HourMinute::new_unchecked(1, 0),
+                    Weekday::Fri,
+                    Decimal::from(b),
+                    Decimal::from(d),
+                )
+                .unwrap()
+        };
+        //Inside one tier: before 2, delta 3 : 3 * 0.2
+        assert_eq!(cost(2, 3), dec!(0.6));
+        //exactly at tier end
+        assert_eq!(cost(8, 2), dec!(0.4));
+        // starts at threshold
+        assert_eq!(cost(10, 2), dec!(2));
+        // crosses the threshold before
+        assert_eq!(cost(9, 2), dec!(1.2));
+        // crosses 2 thresholds before
+        assert_eq!(cost(21, 2), dec!(4));
+        // beyonnd the last tier
+        assert_eq!(cost(100, 1), dec!(2));
+        // delta =0
+        assert_eq!(cost(100, 0), dec!(0));
+        assert_eq!(cost(10, 0), dec!(0));
+    }
+
+    #[test]
+    fn test_cost_at_flat() {
+        let tariff = TariffFactory::flat(dec!(1), dec!(1.0)).unwrap();
+
+        let cost = |b: u32, d: u32| -> Decimal {
+            tariff
+                .cost_at(
+                    TariffDirection::Import,
+                    HourMinute::new_unchecked(1, 0),
+                    Weekday::Fri,
+                    Decimal::from(b),
+                    Decimal::from(d),
+                )
+                .unwrap()
+        };
+        // flat_rate * delta
+        assert_eq!(cost(100, 1), dec!(1));
+        assert_eq!(cost(0, 10), dec!(10));
     }
 }
