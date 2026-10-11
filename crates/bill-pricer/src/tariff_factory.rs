@@ -190,8 +190,8 @@ mod tests {
   "cons_period": null
 }"#;
         assert_eq!(
-            actual.replace("\n", "").replace(" ", "").trim(),
-            expected.replace("\n", "").replace(" ", "").trim()
+            actual.replace(['\n', ' '], "").trim(),
+            expected.replace(['\n', ' '], "").trim()
         );
     }
 

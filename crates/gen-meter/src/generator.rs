@@ -271,7 +271,7 @@ mod tests {
                 daily_kwh: Decimal::from(avg_kwh),
                 ..Default::default()
             },
-            "Australia/Sydney".into(),
+            "Australia/Sydney",
         )
         .unwrap()
     }
@@ -279,15 +279,9 @@ mod tests {
     #[test]
     fn test_pvwatt_multiple_capacities() {
         let result = read_solar(1, 60).unwrap();
-        assert_eq!(
-            result.iter().map(|(_, v)| v).sum::<Decimal>().floor(),
-            dec!(1492)
-        );
+        assert_eq!(result.values().sum::<Decimal>().floor(), dec!(1492));
         let result = read_solar(4, 60).unwrap();
-        assert_eq!(
-            result.iter().map(|(_, v)| v).sum::<Decimal>().floor(),
-            dec!(5970)
-        );
+        assert_eq!(result.values().sum::<Decimal>().floor(), dec!(5970));
     }
     #[test]
     fn test_smart_meter() {
@@ -314,8 +308,8 @@ mod tests {
         let s60 = read_solar(1, 60).unwrap();
         let s30 = read_solar(1, 30).unwrap();
         let s15 = read_solar(1, 15).unwrap();
-        assert!(s15.len() == 2 * s30.len());
-        assert!(s15.len() == 4 * s60.len());
+        assert_eq!(s15.len(), 2 * s30.len());
+        assert_eq!(s15.len(), 4 * s60.len());
     }
     #[test]
     fn test_read_solar_split_is_continuous() {
@@ -338,14 +332,12 @@ mod tests {
         assert_eq!(
             s30.get(&key).unwrap() + s30.get(&key30).unwrap(),
             *s.get(&key).unwrap()
-        )
+        );
     }
 
     #[test]
     fn test_solar_yearly_sum() {
-        let ssum = |s: &BTreeMap<MonthDayTime, Decimal>| -> Decimal {
-            s.iter().map(|(_, v)| v).sum::<Decimal>()
-        };
+        let ssum = |s: &BTreeMap<MonthDayTime, Decimal>| -> Decimal { s.values().sum::<Decimal>() };
         let s = read_solar(1, 60).unwrap();
         let s30 = read_solar(1, 30).unwrap();
         let s15 = read_solar(1, 15).unwrap();
@@ -364,7 +356,7 @@ mod tests {
 
                 ..Default::default()
             },
-            "Australia/Sydney".into(),
+            "Australia/Sydney",
         )
         .unwrap();
 

@@ -13,29 +13,29 @@ use std::str::FromStr;
 const SYDNEY: &str = "Australia/Sydney";
 
 fn generate_tariff() -> Tariff {
-    let hmop0000 = HourMinute::new_unchecked(0, 0);
-    let hmop1759 = HourMinute::new_unchecked(17, 59);
-    let hmp1800 = HourMinute::new_unchecked(18, 0);
-    let hmp2059 = HourMinute::new_unchecked(20, 59);
-    let hmo2100 = HourMinute::new_unchecked(21, 0);
-    let hmo2359 = HourMinute::new_unchecked(23, 59);
+    let midnight = HourMinute::new_unchecked(0, 0);
+    let hm_off_peak_1759 = HourMinute::new_unchecked(17, 59);
+    let hm_peak_1800 = HourMinute::new_unchecked(18, 0);
+    let hm_peak_2059 = HourMinute::new_unchecked(20, 59);
+    let hm_offpeak_2100 = HourMinute::new_unchecked(21, 0);
+    let hm_offpeak_2359 = HourMinute::new_unchecked(23, 59);
 
     TariffBuilder::default()
         .daily_supply(dec!(1.0))
         .consumption_period(ConsumptionPeriod::Day)
         .rate_period(|s| {
             s.rates(&[(dec!(0.2), dec!(0)), (dec!(0.4), dec!(10))])
-                .time_band(hmop0000, hmop1759, None)
+                .time_band(midnight, hm_off_peak_1759, None)
         })
         .unwrap()
         .rate_period(|s| {
             s.rates(&[(dec!(0.4), dec!(0)), (dec!(0.6), dec!(10))])
-                .time_band(hmp1800, hmp2059, None)
+                .time_band(hm_peak_1800, hm_peak_2059, None)
         })
         .unwrap()
         .rate_period(|s| {
             s.rates(&[(dec!(0.2), dec!(0)), (dec!(0.4), dec!(10))])
-                .time_band(hmo2100, hmo2359, None)
+                .time_band(hm_offpeak_2100, hm_offpeak_2359, None)
         })
         .unwrap()
         .export_rate_period(|s| {
@@ -56,7 +56,7 @@ fn setup(frequency: i64) -> (Tariff, PricingInput) {
                 with_export: true,
                 ..Default::default()
             },
-            SYDNEY.into(),
+            SYDNEY,
         )
         .unwrap(),
     ));
@@ -70,7 +70,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     for freq in [60, 30, 5, 1] {
         let (tariff, input) = setup(freq);
         c.bench_function(&format!("price {freq}"), |b| {
-            b.iter(|| price(black_box(&tariff), black_box(&input)).unwrap())
+            b.iter(|| price(black_box(&tariff), black_box(&input)).unwrap());
         });
     }
 }
