@@ -1,7 +1,7 @@
 use std::cmp::min;
 
 use chrono::Weekday;
-use domain::HourMinute;
+use domain::{HourMinute, hour_minute::InvalidStrHourMinute};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
@@ -125,6 +125,8 @@ pub enum TariffError {
     EmptyRates,
     #[error(transparent)]
     InvalidTimeBand(#[from] InvalidTimeBand),
+    #[error(transparent)]
+    InvalidStrHourMinute(#[from] InvalidStrHourMinute),
 }
 
 fn cumulative_cost(rates: &[RateBlock], up_to: Decimal) -> Decimal {
@@ -479,7 +481,7 @@ mod tests {
     #[test]
     fn test_build_single_rate_tou_period() {
         let rate_period = RatePeriodBuilder::default()
-            .rates(&vec![(dec!(0.2), dec!(0))])
+            .rates(&[(dec!(0.2), dec!(0))])
             .time_band(
                 HourMinute::from_str("16:00").unwrap(),
                 HourMinute::from_str("20:00").unwrap(),
@@ -611,7 +613,7 @@ mod tests {
 
     #[test]
     fn test_cost_at_inside_one_tier() {
-        let blocks: Vec<(Decimal, Decimal)> = vec![(0.2, 0.0), (1.0, 10.0), (2.0, 20.0)]
+        let blocks: Vec<(Decimal, Decimal)> = [(0.2, 0.0), (1.0, 10.0), (2.0, 20.0)]
             .iter()
             .map(|&(a, b)| (Decimal::try_from(a).unwrap(), Decimal::try_from(b).unwrap()))
             .collect();

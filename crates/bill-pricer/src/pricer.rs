@@ -158,7 +158,7 @@ mod tests {
     }
 
     fn sm(cfg: &GeneratorConfig) -> Vec<MeterMeasure> {
-        generate_smart_meter(cfg, SYDNEY.into()).unwrap()
+        generate_smart_meter(cfg, SYDNEY).unwrap()
     }
 
     fn priced(meter: &[MeterMeasure], zone: &str) -> PricingInput {
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn test_sydney_brisbane_daily_light() {
-        let tariff = get_tou_tariff(dec!(0.4), dec!(0.2), "16:00", "21:00");
+        let tariff = get_tou_tariff(dec!(0.4), dec!(0.2), "16:00", "21:00").unwrap();
         let smart_meter = vec![
             MeterMeasure {
                 utc_start: utc_local("2026-01-01 16:30:00", SYDNEY), //peak
@@ -381,7 +381,7 @@ mod tests {
                 //end: "2026-01-08 00:00:00".into(),
                 ..Default::default()
             },
-            SYDNEY.into(),
+            SYDNEY,
         )
         .unwrap();
 
@@ -416,7 +416,7 @@ mod tests {
                 daily_kwh: dec!(24),
                 ..Default::default()
             },
-            SYDNEY.into(),
+            SYDNEY,
         )
         .unwrap();
         // 12*0.2 +12*1 + 1 = 15.4
@@ -449,7 +449,7 @@ mod tests {
                 daily_kwh: dec!(24),
                 ..Default::default()
             },
-            SYDNEY.into(),
+            SYDNEY,
         )
         .unwrap();
         // Jan (31d): 200*0.2 + (744-200)*0.4 = 257.6
@@ -474,7 +474,7 @@ mod tests {
                 daily_kwh: dec!(0),
                 ..Default::default()
             },
-            SYDNEY.into(),
+            SYDNEY,
         )
         .unwrap();
         let flat_tariff = TariffFactory::flat_export(dec!(1), dec!(0.0), dec!(1)).unwrap();
