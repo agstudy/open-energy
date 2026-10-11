@@ -40,6 +40,26 @@ impl TariffFactory {
             .build()
     }
 
+    /// Builds a multifalt tariff with the given flat rate and daily supply rate.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TariffError`]: direct use of tariffbuilder
+    ///
+    ///
+    pub fn multiflat(
+        blocks: &[(Decimal, Decimal)],
+        supply_rate: Decimal,
+    ) -> Result<Tariff, TariffError> {
+        TariffBuilder::default()
+            .daily_supply(supply_rate)
+            .rate_period(|s| {
+                s.rates(blocks)
+                    .time_band(HourMinute::min(), HourMinute::max(), None)
+            })?
+            .build()
+    }
+
     /// Builds a flat tariff with export tariff.
     ///
     /// # Errors
