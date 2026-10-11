@@ -1,3 +1,5 @@
+[![CI](https://github.com/agstudy/open-energy/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/agstudy/open-energy/actions/workflows/ci.yml)
+
 # open-energy
 
 An open-source Rust platform for auditing and electrifying home and business energy use.
