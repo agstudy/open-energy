@@ -13,10 +13,15 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+
+
 meter-parser = { path = "../meter-parser" }
 bill-pricer = { path = "../bill-pricer" }
 domain = { path = "../../domain" }
-gen-meter = {path = "../gen-meter"}
+gen-meter = { path = "../gen-meter" }
+aus-offer = { path = "../aus-offer" }
 
 
 [[bin]]

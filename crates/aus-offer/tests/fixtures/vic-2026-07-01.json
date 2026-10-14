@@ -1,0 +1,177 @@
+                {
+                    "offerDetails": [
+                        {
+                            "offerId": "1ST764114MR",
+                            "distributor": "Citipower",
+                            "offerKey": 1,
+                            "controlledLoadRate": "",
+                            "offerName": "1st Opal, Residential - Anytime",
+                            "eligibilityCriteria": "This offer is available to customers within the Citipower distribution zone with the applicable network tariff and meter configuration.",
+                            "retailerName": "1st Energy",
+                            "isResidential": true,
+                            "tariffType": "Single rate",
+                            "underlyingNetworkTariffType": "flat",
+                            "releaseDate": "01/07/2026",
+                            "offerType": "Market offer",
+                            "includeGSTRates": true,
+                            "GSTPercent": 10,
+                            "retailerId": 1,
+                            "retailerLicenseName": "1st Energy Pty Ltd",
+                            "retailerFueltype": "Both",
+                            "retailerUrl": "www.1stenergy.com.au",
+                            "retailerImageUrl": "images/retailers/big/1stenergy.png",
+                            "retailerPhone": "1300 426 594",
+                            "retailerDescription": "",
+                            "retailerRatings": {
+                                "customer_service": {
+                                    "satisfied": 48.86,
+                                    "neutral": 18.72,
+                                    "unsatisfied": 13.24,
+                                    "total_responses": 219
+                                },
+                                "complaints_handling": {
+                                    "well": 28.31,
+                                    "neutral": 16.89,
+                                    "poor": 6.85,
+                                    "total_responses": 219
+                                },
+                                "signup_process": {
+                                    "easy": 75.8,
+                                    "neutral": 15.98,
+                                    "hard": 5.48,
+                                    "total_responses": 219
+                                },
+                                "likely_to_recommend": {
+                                    "positive": 53.41,
+                                    "total_responses": 88
+                                },
+                                "total": 219
+                            },
+                            "retailerABN": "71604999706",
+                            "basePrice": "1034.000",
+                            "totalConditional": 980,
+                            "totalUnconditional": 1030,
+                            "totalIncGst": "1034.000",
+                            "totalExcGst": "940.000",
+                            "includesDemandTariff": 0,
+                            "annualFeeCount": "0",
+                            "contractLength": "None",
+                            "contract": {
+                                "offer_term_of_contract": "None",
+                                "offer_bill_frequency": "1 month",
+                                "offer_arr_on_expiry": "Your contract continues until terminated by you or us in accordance with our terms and conditions.",
+                                "offer_eligibility_clause": "This offer is available to customers within the Citipower distribution zone with the applicable network tariff and meter configuration.",
+                                "rates_are_fixed": "No",
+                                "offer_var_of_prices": "Prices may be varied in line with your terms and conditions. If your charges are increasing we will notify you at least 5 business days prior to the variation applying.",
+                                "terms_and_conditions": "For further details on the information presented in this fact sheet, or the terms and conditions of the offer, please visit www.1stenergy.com.au or call 1st Energy on 1300 426 594."
+                            },
+                            "fees": [
+                                {
+                                    "fee_type": "Cheque dishonour payment fee",
+                                    "fee_term": "Flat rate",
+                                    "fee_amount": 15,
+                                    "fee_percentage": 0,
+                                    "fee_description": "Cheque dishonour fee",
+                                    "offer_add_info": "Additional fees may apply. For more information, please call 1300 426 594."
+                                },
+                                {
+                                    "fee_type": "Direct debit dishonour payment fee",
+                                    "fee_term": "Flat rate",
+                                    "fee_amount": 7.5,
+                                    "fee_percentage": 0,
+                                    "fee_description": "Direct debit dishonour fee",
+                                    "offer_add_info": null
+                                },
+                                {
+                                    "fee_type": "Payment processing fee",
+                                    "fee_term": "Flat rate",
+                                    "fee_amount": 2.7,
+                                    "fee_percentage": 0,
+                                    "fee_description": "May apply for over the counter payments made at an Australia Post outlet",
+                                    "offer_add_info": null
+                                },
+                                {
+                                    "fee_type": "Other fee",
+                                    "fee_term": "Flat rate",
+                                    "fee_amount": 2.15,
+                                    "fee_percentage": 0,
+                                    "fee_description": "Charged for providing a paper bill",
+                                    "offer_add_info": null
+                                }
+                            ],
+                            "discounts": [
+                                {
+                                    "discount_amount": 0,
+                                    "discount_application_type": "Percentage of bill amount",
+                                    "discount_categories": [
+                                        "Pay On Time"
+                                    ],
+                                    "discount_percentage": 5,
+                                    "discount_type": "Conditional",
+                                    "discount_conditions": "5% discount off the market contract usage and supply rates set out below for every electricity bill paid on time."
+                                }
+                            ],
+                            "solarCredit": 0,
+                            "solar": [
+                                {
+                                    "rate": 0.5,
+                                    "feed_in_tariff": "Current FIT policy",
+                                    "description": "Solar feed-in"
+                                }
+                            ],
+                            "tariffDetails": [
+                                {
+                                    "tariff_applicable_from": "",
+                                    "tariff_applicable_to": "",
+                                    "tariff_daily_charge": "90.6",
+                                    "tariff_cons_prd": "day",
+                                    "season_name": "",
+                                    "TARIFFS": [
+                                        {
+                                            "tariff_name": "",
+                                            "tariff_type": null,
+                                            "RATES": [
+                                                {
+                                                    "rate_block": 19.4,
+                                                    "rate_block_consumption": 0
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ],
+                            "greenPower": 0,
+                            "greenpowerAmount": 0,
+                            "isGenerallyAvailable": true,
+                            "greenpowerChargeType": "",
+                            "intrinsicGreenpowerPercentage": 0,
+                            "parentOfferHasGreenpowerOptions": false,
+                            "isControlLoad": false,
+                            "isTouOffer": false,
+                            "baseOfferType": false,
+                            "isAvailableForOnlineSignup": false,
+                            "isInnovativeOffer": false,
+                            "isVictorianDefaultOffer": false,
+                            "isDirectDebitOnly": false,
+                            "hasPayOnTimeDiscount": true,
+                            "hasIncentive": false,
+                            "isContingentOffer": false,
+                            "contractLengthCount": 1,
+                            "exitFee": 0,
+                            "exitFeeCount": 0,
+                            "isGasOffer": false,
+                            "isSme": false,
+                            "estimatedSolarCredit": 0,
+                            "incentives": [],
+                            "additionalFeeInformation": "Additional fees may apply. For more information, please call 1300 426 594.",
+                            "solarType": "",
+                            "coolOffPeriod": "10 days",
+                            "isAvailableForSolar": true,
+                            "isCustomEligibilityOffer": false,
+                            "isEvOnlyOffer": false,
+                            "isZeroPricePeriodOffer": false,
+                            "timeDefinition": "Local time",
+                            "signupUrl": null
+                        }
+                    ]
+                }

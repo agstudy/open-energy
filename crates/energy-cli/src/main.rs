@@ -1,5 +1,7 @@
 use anyhow::Context;
 use anyhow::Result as AnyResult;
+use aus_offer::loader::get_all_plans;
+use aus_offer::loader::get_retailers;
 use bill_pricer::pricer::PricingResult;
 use bill_pricer::pricer::price;
 use bill_pricer::tariff::{Tariff, TariffRaw};
@@ -15,6 +17,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(name = "Energy Tool")]
@@ -50,6 +53,12 @@ enum TariffCmd {
         #[arg(long = "tariff-file")]
         file: PathBuf,
     },
+}
+
+#[derive(Subcommand)]
+enum QueryCmd {
+    Retailers,
+    Plans,
 }
 
 #[derive(Args)]
@@ -122,6 +131,11 @@ enum Commands {
         #[arg(long)]
         tz: String,
     },
+
+    Cdr {
+        #[command(subcommand)]
+        query: QueryCmd,
+    },
 }
 
 impl SourceArgs {
@@ -168,7 +182,9 @@ impl TryFrom<TariffCmd> for Tariff {
         }
     }
 }
-fn main() -> AnyResult<()> {
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
@@ -179,6 +195,23 @@ fn main() -> AnyResult<()> {
             let bill = run_price(source, tariff, &tz)?;
             println!("\n{bill}");
         }
+        Commands::Cdr { query } => match query {
+            QueryCmd::Retailers => {
+                let client = reqwest::Client::new();
+                let retailers = get_retailers(&client).await?;
+                for ret in &retailers {
+                    println!("{ret}");
+                }
+            }
+            QueryCmd::Plans => {
+                let client = Arc::new(reqwest::Client::new());
+                let retailers = get_all_plans(client).await?;
+                for (brand, ret) in &retailers {
+                    println!("{brand}:");
+                    println!("{ret}");
+                }
+            }
+        },
     }
     Ok(())
 }
