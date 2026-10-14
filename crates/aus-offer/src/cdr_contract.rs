@@ -54,7 +54,7 @@ pub struct PlanContract {
     pub pricing_model: PricingModel,
     pub time_zone: Option<TimeZone>,
     pub incentives: Option<Vec<PlanIncentive>>,
-    pub discounts: Option<PlanDiscount>,
+    pub discounts: Option<Vec<PlanDiscount>>,
     pub eligibility: Option<Vec<PlanEligibility>>,
     pub solar_feed_in_tariff: Option<Vec<PlanSolarTariff>>,
     pub tariff_period: Vec<PlanTariff>,

@@ -1,6 +1,6 @@
 use anyhow::Context;
 use anyhow::Result as AnyResult;
-use aus_offer::loader::get_all_plans;
+use aus_offer::loader::get_all_plans_details;
 use aus_offer::loader::get_retailers;
 use bill_pricer::pricer::PricingResult;
 use bill_pricer::pricer::price;
@@ -17,7 +17,6 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(name = "Energy Tool")]
@@ -204,11 +203,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             QueryCmd::Plans => {
-                let client = Arc::new(reqwest::Client::new());
-                let retailers = get_all_plans(client).await?;
-                for (brand, ret) in &retailers {
-                    println!("{brand}:");
-                    println!("{ret}");
+                let client = reqwest::Client::new();
+                let plans = get_all_plans_details(&client).await?;
+                for (i, (k, v)) in plans.iter().enumerate() {
+                    println!("{}:{}:{}", k, v.brand, i);
                 }
             }
         },

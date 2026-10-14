@@ -1,12 +1,16 @@
 use chrono::{DateTime, Utc};
 use core::fmt;
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 use reqwest::{self, Client};
 use serde::Deserialize;
-use std::sync::Arc;
+use tokio::fs;
 use tokio::task::{JoinError, JoinSet};
 
-use crate::{cdr_contract::PlanContract, energy_map::ENERGY_BASE_URIS};
+use crate::cdr_domain::GeographyDto;
+use crate::cdr_plan::PlanDetail;
+use crate::energy_map::ENERGY_BASE_URIS;
 // --errors
 
 #[derive(Debug, thiserror::Error)]
@@ -25,6 +29,8 @@ pub enum LoadError {
     Join(#[from] JoinError),
     #[error("No base url for: {0}")]
     NoBaseUrl(String),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 }
 
 // ---- dto
@@ -78,24 +84,6 @@ pub struct PlanDto {
     pub geography: Option<GeographyDto>,
 }
 
-/// EnergyPlanGeography : Describes the geographical area that the plan is available for.
-/// If absent then it is assumed the plan is not geographically limited.
-#[derive(Clone, Default, Debug, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GeographyDto {
-    /// Array of valid Australian postcodes that are specifically excluded from the plan.
-    /// Each element is a single four digit postcode (e.g., `3000`)
-    /// or a range of postcodes defined by two four digit postcodes and a hyphen (e.g., `3000-3999`).
-    pub excluded_postcodes: Option<Vec<String>>,
-    /// Array of valid Australian postcodes that are included from the plan.
-    /// If absent defaults to all non-excluded postcodes.
-    /// Each element is a single four digit postcode (e.g., `3000`)
-    /// or a range of postcodes defined by two four digit postcodes and a hyphen (e.g., `3000-3999`).
-    pub included_postcodes: Option<Vec<String>>,
-    /// Array of distributors for the plan. Must have at least one entry.
-    pub distributors: Vec<String>,
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MetaDto {
@@ -129,15 +117,13 @@ impl fmt::Display for PlanResponseDto {
 
 #[derive(Debug, Deserialize)]
 pub struct PlanDetailResponse {
-    pub data: PlanContract,
+    pub data: PlanDetail,
 }
 
-
-
-
-
-
-
+async fn save_plan(body: &str, plan_id: &str) {
+    let path = format!("/tmp/plans/{plan_id}.json");
+    fs::write(&path, body).await.unwrap();
+}
 
 // -----requests
 
@@ -164,55 +150,112 @@ pub async fn get_retailer_plans(
     client: &Client,
     retailer_base_url: &str,
     page_size: usize,
-) -> Result<PlanResponseDto, LoadError> {
-    let url = format!(
+) -> Result<Vec<PlanDto>, LoadError> {
+    let mut url = format!(
         "{retailer_base_url}cds-au/v1/energy/plans?fuelType=ELECTRICITY&page-size={page_size}"
     );
-
-    let body = fetch_url(client, url.as_str(), 1).await?;
-    let data: PlanResponseDto =
-        serde_json::from_str(body.as_str()).map_err(|e| LoadError::JsonInUrl {
-            url: url.clone(),
-            source: e,
-        })?;
-    Ok(data)
+    let mut all = Vec::new();
+    loop {
+        let body = fetch_url(client, url.as_str(), 1).await?;
+        let result: PlanResponseDto =
+            serde_json::from_str(body.as_str()).map_err(|e| LoadError::JsonInUrl {
+                url: url.clone(),
+                source: e,
+            })?;
+        all.extend(result.data.plans);
+        match result.links.next {
+            Some(next) => url = next,
+            None => break,
+        }
+    }
+    Ok(all)
 }
 
 pub async fn get_plan_detail(
     client: &Client,
     retailer_base_url: &str,
     plan_id: &str,
-) -> Result<PlanDetailResponse, LoadError> {
+) -> Result<PlanDetail, LoadError> {
     let url = format!("{retailer_base_url}cds-au/v1/energy/plans/{plan_id}");
     let body = fetch_url(client, &url, 3).await?;
 
-    let data: PlanDetailResponse =
-        serde_json::from_str(body.as_str()).map_err(|e| LoadError::JsonInUrl {
-            url: url.clone(),
-            source: e,
-        })?;
-    Ok(data)
+    save_plan(&body, plan_id).await;
+
+    match serde_json::from_str::<PlanDetailResponse>(body.as_str()) {
+        Err(e) => {
+            let col = e.column();
+            let snippet = &body[col.saturating_sub(100)..(col + 100).min(body.len())];
+            eprintln!("parse error near, ..{snippet}...");
+            Err(LoadError::JsonInUrl {
+                url: url.clone(),
+                source: e,
+            })
+        }
+        Ok(v) => Ok(v.data),
+    }
 }
 
-pub async fn get_all_plans(
-    client: Arc<reqwest::Client>,
-) -> Result<Vec<(String, PlanResponseDto)>, LoadError> {
-    let mut set = JoinSet::new();
+// let existing = list_files(&"/tmp/plans").await.unwrap();
+// for plan in &body.data.plans {
+//     let id_plan = &plan.plan_id;
+//     if !existing.contains(id_plan) {
+//         println!("Loading {}", id_plan);
+//         get_plan_detail(&client, url, id_plan).await?;
+//     }
+// }
 
-    for (&brand, &url) in ENERGY_BASE_URIS.iter() {
+pub async fn get_all_plans(client: &Client) -> Result<HashMap<String, String>, LoadError> {
+    let mut set: JoinSet<Result<Vec<(String, String)>, LoadError>> = JoinSet::new();
+
+    for (_, &url) in ENERGY_BASE_URIS.iter() {
         // Arc handle for the task (refcount bump, not a Client clone)
-        let client = Arc::clone(&client);
+        let client = client.clone();
         set.spawn(async move {
-            let body = get_retailer_plans(&client, url, 1).await?;
-            for plan in &body.data.plans {
-                get_plan_detail(&client, url, &plan.plan_id).await?;
-            }
-            Ok::<(String, PlanResponseDto), LoadError>((brand.into(), body))
+            let plans = get_retailer_plans(&client.clone(), url, 1000).await?;
+
+            let result = plans
+                .iter()
+                .map(|p| (p.plan_id.clone(), url.to_string()))
+                .collect::<Vec<(String, String)>>();
+            Ok(result)
         });
     }
-    let mut result = Vec::new();
+    let mut result: HashMap<String, String> = HashMap::new();
     while let Some(res) = set.join_next().await {
-        result.push(res??);
+        for (plan_id, url) in res?? {
+            result.insert(plan_id, url);
+        }
+    }
+
+    Ok(result)
+}
+const CACHE_DIR: &str = "/tmp/plans";
+
+pub async fn get_all_plans_details(
+    client: &Client,
+) -> Result<HashMap<String, PlanDetail>, LoadError> {
+    let mut set: JoinSet<Result<PlanDetail, LoadError>> = JoinSet::new();
+    let plans = get_all_plans(&client).await?;
+
+    for (plan_id, url) in plans {
+        let client = client.clone();
+        set.spawn(async move {
+            let path = PathBuf::from(CACHE_DIR).join(format!("{}.json", &plan_id));
+
+            let plan = if tokio::fs::try_exists(&path).await? {
+                let body = tokio::fs::read_to_string(&path).await?;
+                let res = serde_json::from_str::<PlanDetailResponse>(&body)?;
+                res.data
+            } else {
+                get_plan_detail(&client, &url, &plan_id).await?
+            };
+            Ok(plan)
+        });
+    }
+    let mut result: HashMap<String, PlanDetail> = HashMap::new();
+    while let Some(res) = set.join_next().await {
+        let plan = res??;
+        result.insert(plan.plan_id.clone(), plan);
     }
 
     Ok(result)
@@ -223,5 +266,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_get_retailers() {}
+    fn parses_vic_offer() {
+        let json = include_str!("../data/ORI1145183MBE2@EME.json");
+        serde_json::from_str::<PlanDetailResponse>(&json).unwrap();
+    }
 }

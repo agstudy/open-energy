@@ -1,4 +1,5 @@
 
+use rust_decimal::Decimal;
 use serde::Deserialize;
 
 
@@ -58,8 +59,8 @@ pub enum EnergyDaysEnum {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RateDto {
-    pub unit_price: String, // "0.2587"
-    pub volume: Option<u32>, // 20000
+    pub unit_price: Decimal, // "0.2587"
+    pub volume: Option<Decimal>, // 20000
     /// The measurement unit of rate. Assumed to be `KWH` if absent.
     pub measure_unit: Option<MeasureUnitEnum>,
 }
@@ -70,4 +71,22 @@ pub struct TimeOfUseDayTimeBand {
     pub days: Vec<EnergyDaysEnum>,
     pub start_time: String,
     pub end_time: String,
+}
+
+/// EnergyPlanGeography : Describes the geographical area that the plan is available for.
+/// If absent then it is assumed the plan is not geographically limited.
+#[derive(Clone, Default, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeographyDto {
+    /// Array of valid Australian postcodes that are specifically excluded from the plan.
+    /// Each element is a single four digit postcode (e.g., `3000`)
+    /// or a range of postcodes defined by two four digit postcodes and a hyphen (e.g., `3000-3999`).
+    pub excluded_postcodes: Option<Vec<String>>,
+    /// Array of valid Australian postcodes that are included from the plan.
+    /// If absent defaults to all non-excluded postcodes.
+    /// Each element is a single four digit postcode (e.g., `3000`)
+    /// or a range of postcodes defined by two four digit postcodes and a hyphen (e.g., `3000-3999`).
+    pub included_postcodes: Option<Vec<String>>,
+    /// Array of distributors for the plan. Must have at least one entry.
+    pub distributors: Vec<String>,
 }

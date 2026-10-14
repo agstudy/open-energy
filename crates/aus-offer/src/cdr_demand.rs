@@ -1,3 +1,4 @@
+use rust_decimal::Decimal;
 use serde::Deserialize;
 
 use crate::cdr_domain::{EnergyDaysEnum, MeasureUnitEnum};
@@ -6,13 +7,13 @@ use crate::cdr_domain::{EnergyDaysEnum, MeasureUnitEnum};
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DemandTariff {
-    pub amount: String,
+    pub amount: Decimal,
     pub measure_unit: Option<MeasureUnitEnum>,
     pub start_time: String,
     pub end_time: String,
     pub days: Option<Vec<EnergyDaysEnum>>,
-    pub min_demand: Option<String>,
-    pub max_demand: Option<String>,
+    pub min_demand: Option<Decimal>,
+    pub max_demand: Option<Decimal>,
     pub measurement_period: MeasurementPeriod,
     pub charge_period: ChargePeriod,
 }

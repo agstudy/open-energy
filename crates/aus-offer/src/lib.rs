@@ -8,3 +8,5 @@ pub mod cdr_domain;
 pub mod cdr_solar;
 pub mod cdr_demand;
 pub mod cdr_eligibility;
+pub mod cdr_plan;
+pub mod helper;

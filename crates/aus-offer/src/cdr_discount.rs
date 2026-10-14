@@ -1,3 +1,4 @@
+use rust_decimal::Decimal;
 use serde::Deserialize;
 
 /// The type of the discount.
@@ -43,14 +44,14 @@ pub enum DiscountCalculationType {
 pub struct PercentOfUse {
     /// The rate of the discount applied to the _usageamount_.
     #[serde(rename = "rate")]
-    pub rate: String,
+    pub rate: Decimal,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct FixedAmount {
     /// The rate of the discount applied to the bill amount.
-    #[serde(rename = "rate")]
-    pub amount: String,
+    #[serde(rename = "amount")]
+    pub amount: Decimal,
 }
 
 
@@ -60,14 +61,14 @@ pub struct FixedAmount {
 pub struct PercentOfBill {
     /// The rate of the discount applied to the bill amount.
     #[serde(rename = "rate")]
-    pub rate: String,
+    pub rate: Decimal,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PercentOverThreshold {
-    pub rate: String,
-    pub usage_amount: String,
+    pub rate: Decimal,
+    pub usage_amount: Decimal,
 }
 
 #[derive( Debug, Deserialize)]

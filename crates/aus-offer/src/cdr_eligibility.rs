@@ -7,7 +7,7 @@ pub struct PlanEligibility {
     /// The type of the eligibility restriction.<br/>The `CONTINGENT_PLAN` value indicates that the plan is contingent on the customer taking up an alternate fuel plan from the same retailer (for instance, if the _fuelType_ is `ELECTRICITY` then a `GAS` plan from the same retailer must be taken up).
     #[serde(rename = "type")]
     pub eligibility_type: EligibilityType,
-    pub information: String,
+    pub information: Option<String>,
 }
 
 /// The type of the eligibility restriction.<br/>The `CONTINGENT_PLAN` value indicates that the plan is contingent on the customer taking up an alternate fuel plan from the same retailer (for instance, if the _fuelType_ is `ELECTRICITY` then a `GAS` plan from the same retailer must be taken up).
