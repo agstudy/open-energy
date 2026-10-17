@@ -1,20 +1,18 @@
-
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
 use crate::{cdr_contract::PlanContract, cdr_domain::GeographyDto};
-
-
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanDetail {
     pub plan_id: String,
-    /// The date and time from which this plan is effective (i.e. is available for origination). 
+    /// The date and time from which this plan is effective (i.e. is available for origination).
     /// Used to enable the articulation of products to the regime before they are available for customers to originate.
-    pub effective_from: Option<String>,
-    /// The date and time at which this plan will be retired and will no longer be offered. 
+    pub effective_from: Option<DateTime<Utc>>,
+    /// The date and time at which this plan will be retired and will no longer be offered.
     /// Used to enable the managed deprecation of plans.
-    pub effective_to: Option<String>,
+    pub effective_to: Option<DateTime<Utc>>,
     pub display_name: Option<String>,
     /// The type of the plan.
     #[serde(rename = "type")]
@@ -27,8 +25,7 @@ pub struct PlanDetail {
     pub electricity_contract: PlanContract,
 }
 
-
-#[derive(Debug,Deserialize)]
+#[derive(Debug, Deserialize)]
 pub enum PlanType {
     #[serde(rename = "STANDING")]
     Standing,
@@ -37,7 +34,6 @@ pub enum PlanType {
     #[serde(rename = "REGULATED")]
     Regulated,
 }
-
 
 #[derive(Debug, Deserialize)]
 pub enum FuelType {
@@ -56,5 +52,3 @@ pub enum CustomerType {
     #[serde(rename = "BUSINESS")]
     Business,
 }
-
-

@@ -22,7 +22,7 @@ fn generate_tariff() -> Tariff {
 
     TariffBuilder::default()
         .daily_supply(dec!(1.0))
-        .consumption_period(ConsumptionPeriod::Day)
+        .consumption_period(Some(ConsumptionPeriod::Day))
         .rate_period(|s| {
             s.rates(&[(dec!(0.2), dec!(0)), (dec!(0.4), dec!(10))])
                 .time_band(midnight, hm_off_peak_1759, None)

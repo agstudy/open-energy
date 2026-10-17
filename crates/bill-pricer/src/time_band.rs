@@ -83,7 +83,7 @@ impl TimeBand {
     ///
     /// # Errors
     ///
-    /// Returns [`TariffError::InvalidTimeBand`] if `start` is after `end`,
+    /// Returns [`InvalidTimeBand`] if `start` is after `end`,
     pub fn new(
         start: HourMinute,
         end: HourMinute,

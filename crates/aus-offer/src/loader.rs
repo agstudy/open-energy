@@ -1,18 +1,19 @@
-use chrono::{DateTime, Utc};
-use core::fmt;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use bill_pricer::tariff::Tariff;
 use reqwest::{self, Client};
-use serde::Deserialize;
 use tokio::fs;
 use tokio::task::{JoinError, JoinSet};
 
-use crate::cdr_domain::GeographyDto;
+use crate::cdr_contract::ParseContractError;
 use crate::cdr_plan::PlanDetail;
+use crate::cdr_response::{PlanDetailResponse, PlanDto, PlanResponseDto};
 use crate::energy_map::ENERGY_BASE_URIS;
-// --errors
 
+const CACHE_DIR: &str = "/tmp/plans";
+
+// --errors
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
     #[error("json: {0}")]
@@ -31,93 +32,8 @@ pub enum LoadError {
     NoBaseUrl(String),
     #[error(transparent)]
     Io(#[from] std::io::Error),
-}
-
-// ---- dto
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RetailerDto {
-    pub brand_name: String,
-    pub public_base_uri: String,
-    pub industries: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RetailersDto {
-    #[serde(rename = "data")]
-    pub retailers: Vec<RetailerDto>,
-}
-
-impl fmt::Display for RetailerDto {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({}, {})", self.brand_name, self.public_base_uri)
-    }
-}
-
-// -- dto plans
-
-#[derive(Debug, Deserialize)]
-pub struct PlanResponseDto {
-    pub data: PlansDataDto,
-    pub meta: MetaDto,
-    pub links: LinksDto,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PlansDataDto {
-    pub plans: Vec<PlanDto>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PlanDto {
-    #[serde(rename = "type")]
-    pub plan_type: String,
-    pub brand: String,
-    pub plan_id: String,
-    pub brand_name: String,
-    pub display_name: String,
-    pub last_updated: DateTime<Utc>,
-    pub customer_type: String,
-    pub effective_from: DateTime<Utc>,
-    pub geography: Option<GeographyDto>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MetaDto {
-    pub total_records: u32,
-    pub total_pages: u32,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct LinksDto {
-    #[serde(rename = "self")]
-    pub self_: String,
-    pub next: Option<String>,
-    pub last: Option<String>,
-}
-
-impl fmt::Display for PlanResponseDto {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Plan Response")?;
-        writeln!(f, "  Total pages:   {}", self.meta.total_pages)?;
-        writeln!(f, "  Total records: {}", self.meta.total_records)?;
-        for plan in &self.data.plans {
-            writeln!(f, "  Brand name:   {}", plan.brand_name)?;
-            writeln!(f, "  Plan id:   {}", plan.plan_id)?;
-        }
-
-        Ok(())
-    }
-}
-
-// -- plan detail
-
-#[derive(Debug, Deserialize)]
-pub struct PlanDetailResponse {
-    pub data: PlanDetail,
+    #[error(transparent)]
+    ParseError(#[from] ParseContractError),
 }
 
 async fn save_plan(body: &str, plan_id: &str) {
@@ -137,13 +53,6 @@ async fn fetch_url(client: &Client, url: &str, version: u32) -> Result<String, r
         .text()
         .await?;
     Ok(body)
-}
-
-pub async fn get_retailers(client: &Client) -> Result<Vec<RetailerDto>, LoadError> {
-    let url = "https://api.cdr.gov.au/cdr-register/v1/energy/data-holders/brands/summary";
-    let body = fetch_url(client, url, 1).await?;
-    let root: RetailersDto = serde_json::from_str(body.as_str())?;
-    Ok(root.retailers)
 }
 
 pub async fn get_retailer_plans(
@@ -171,6 +80,32 @@ pub async fn get_retailer_plans(
     Ok(all)
 }
 
+pub async fn get_all_retailer_plans(client: &Client) -> Result<HashMap<String, String>, LoadError> {
+    let mut set: JoinSet<Result<Vec<(String, String)>, LoadError>> = JoinSet::new();
+
+    for &url in ENERGY_BASE_URIS.values() {
+        // Arc handle for the task (refcount bump, not a Client clone)
+        let client = client.clone();
+        set.spawn(async move {
+            let plans = get_retailer_plans(&client.clone(), url, 1000).await?;
+
+            let result = plans
+                .iter()
+                .map(|p| (p.plan_id.clone(), url.to_string()))
+                .collect::<Vec<(String, String)>>();
+            Ok(result)
+        });
+    }
+    let mut result: HashMap<String, String> = HashMap::new();
+    while let Some(res) = set.join_next().await {
+        for (plan_id, url) in res?? {
+            result.insert(plan_id, url);
+        }
+    }
+
+    Ok(result)
+}
+
 pub async fn get_plan_detail(
     client: &Client,
     retailer_base_url: &str,
@@ -195,52 +130,23 @@ pub async fn get_plan_detail(
     }
 }
 
-// let existing = list_files(&"/tmp/plans").await.unwrap();
-// for plan in &body.data.plans {
-//     let id_plan = &plan.plan_id;
-//     if !existing.contains(id_plan) {
-//         println!("Loading {}", id_plan);
-//         get_plan_detail(&client, url, id_plan).await?;
-//     }
-// }
-
-pub async fn get_all_plans(client: &Client) -> Result<HashMap<String, String>, LoadError> {
-    let mut set: JoinSet<Result<Vec<(String, String)>, LoadError>> = JoinSet::new();
-
-    for (_, &url) in ENERGY_BASE_URIS.iter() {
-        // Arc handle for the task (refcount bump, not a Client clone)
-        let client = client.clone();
-        set.spawn(async move {
-            let plans = get_retailer_plans(&client.clone(), url, 1000).await?;
-
-            let result = plans
-                .iter()
-                .map(|p| (p.plan_id.clone(), url.to_string()))
-                .collect::<Vec<(String, String)>>();
-            Ok(result)
-        });
-    }
-    let mut result: HashMap<String, String> = HashMap::new();
-    while let Some(res) = set.join_next().await {
-        for (plan_id, url) in res?? {
-            result.insert(plan_id, url);
-        }
-    }
-
-    Ok(result)
+pub fn parse_offer_file(path: &Path) -> Result<Vec<Tariff>, LoadError> {
+    let body = std::fs::read_to_string(&path)?;
+    let res = serde_json::from_str::<PlanDetailResponse>(&body)?;
+    let tariff = res.data.electricity_contract.build_tariff()?;
+    Ok(tariff)
 }
-const CACHE_DIR: &str = "/tmp/plans";
 
 pub async fn get_all_plans_details(
     client: &Client,
 ) -> Result<HashMap<String, PlanDetail>, LoadError> {
     let mut set: JoinSet<Result<PlanDetail, LoadError>> = JoinSet::new();
-    let plans = get_all_plans(&client).await?;
+    let plans = get_all_retailer_plans(client).await?;
 
     for (plan_id, url) in plans {
         let client = client.clone();
         set.spawn(async move {
-            let path = PathBuf::from(CACHE_DIR).join(format!("{}.json", &plan_id));
+            let path = PathBuf::from(CACHE_DIR).join(format!("{plan_id}.json"));
 
             let plan = if tokio::fs::try_exists(&path).await? {
                 let body = tokio::fs::read_to_string(&path).await?;
@@ -249,6 +155,7 @@ pub async fn get_all_plans_details(
             } else {
                 get_plan_detail(&client, &url, &plan_id).await?
             };
+            // let tariffs = plan.electricity_contract.build_tariff().unwrap();
             Ok(plan)
         });
     }
@@ -263,11 +170,52 @@ pub async fn get_all_plans_details(
 
 #[cfg(test)]
 mod tests {
+    use bill_pricer::{pricer::price, tariff::ConsumptionPeriod};
+    use chrono_tz::Tz;
+    use domain::meter::{MeterMeasure, PricingInput};
+    use gen_meter::generator::{GeneratorConfig, generate_smart_meter};
+    use rust_decimal::Decimal;
+    use rust_decimal_macros::dec;
+    use std::str::FromStr;
+
     use super::*;
+    fn priced(meter: &[MeterMeasure], zone: &str) -> PricingInput {
+        PricingInput::new(tz(zone), meter)
+    }
+
+    fn tz(name: &str) -> Tz {
+        Tz::from_str(name).unwrap()
+    }
 
     #[test]
-    fn parses_vic_offer() {
-        let json = include_str!("../data/ORI1145183MBE2@EME.json");
-        serde_json::from_str::<PlanDetailResponse>(&json).unwrap();
+    fn parses_origin_multiflat_vic_offer() {
+        let json = include_str!("../data/OR2810912MS@VEC.json");
+        let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
+
+        let tariffs = offer.data.electricity_contract.build_tariff().unwrap();
+        assert_eq!(tariffs.len(), 1);
+        let tariff = tariffs.first().unwrap();
+
+        assert_eq!(tariff.supply_rate(), Decimal::try_from(1.0939).unwrap());
+        assert_eq!(tariff.consumption_period(), Some(ConsumptionPeriod::Day));
+
+        let smart_meter = generate_smart_meter(
+            &GeneratorConfig {
+                start: "2026-01-01 00:00:00".into(),
+                end: "2026-01-02 00:00:00".into(),
+                frequency: 60,
+                daily_kwh: dec!(24),
+                ..Default::default()
+            },
+            "Australia/Sydney",
+        )
+        .unwrap();
+        // 11.78*0.2894 +12.22*0.2894 + 1.0939 = 8.0395 = 8.04 (roun 2)
+        let pricing_input = priced(&smart_meter, "Australia/Sydney");
+
+        assert_eq!(
+            price(&tariff, &pricing_input).unwrap().total_bill,
+            dec!(8.04)
+        );
     }
 }

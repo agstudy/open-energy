@@ -1,5 +1,4 @@
-
-use serde::{Deserialize};
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,4 +55,3 @@ pub enum EligibilityType {
     #[serde(rename = "OTHER")]
     Other,
 }
-

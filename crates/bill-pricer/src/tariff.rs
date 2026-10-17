@@ -37,6 +37,8 @@ pub struct Discount {
 pub enum ConsumptionPeriod {
     Day,
     Month,
+    BiMonthly,
+    Quarterly,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -119,8 +121,8 @@ pub enum TariffError {
     NoMatchingPeriod(Weekday, HourMinute),
     #[error("bands overlap at {0}")]
     Overlap(Weekday, HourMinute),
-    #[error("tier thresholds out of order")]
-    TierOrder,
+    #[error("tier thresholds out of order: prev {0} cur {1}")]
+    TierOrder(Decimal, Decimal),
     #[error("Missing rates")]
     EmptyRates,
     #[error(transparent)]
@@ -308,13 +310,13 @@ fn check_tier_order(rates: &[RateBlock]) -> Result<(), TariffError> {
     };
 
     if first != Decimal::ZERO {
-        return Err(TariffError::TierOrder);
+        return Err(TariffError::TierOrder(first, Decimal::ZERO));
     }
 
     let mut prev = first;
     for cur in it {
         if prev >= cur {
-            return Err(TariffError::TierOrder);
+            return Err(TariffError::TierOrder(prev, cur));
         }
         prev = cur;
     }
@@ -384,8 +386,8 @@ pub struct TariffBuilder {
 
 impl TariffBuilder {
     #[must_use]
-    pub fn consumption_period(mut self, cons_period: ConsumptionPeriod) -> Self {
-        self.cons_period = Some(cons_period);
+    pub fn consumption_period(mut self, cons_period: Option<ConsumptionPeriod>) -> Self {
+        self.cons_period = cons_period;
         self
     }
 
@@ -520,13 +522,22 @@ mod tests {
         let tariff = TariffBuilder::default()
             .daily_supply(dec!(0.2))
             .rate_period(|b| {
-                b.rates(&[(dec!(0.1), dec!(1000)), (dec!(0.2), dec!(500))])
-                    .time_band(HourMinute::min(), HourMinute::max(), None)
+                b.rates(&[(dec!(0.1), dec!(1000))]).time_band(
+                    HourMinute::min(),
+                    HourMinute::max(),
+                    None,
+                )
             })
             .unwrap()
             .build();
 
-        assert!(matches!(tariff, Err(TariffError::TierOrder)));
+        match tariff {
+            Err(TariffError::TierOrder(prev, cur)) => {
+                assert_eq!(prev, dec!(1000));
+                assert_eq!(cur, Decimal::ZERO);
+            }
+            _ => panic!("expceted TierOrder, got error"),
+        }
     }
 
     #[test]
@@ -617,7 +628,10 @@ mod tests {
             .iter()
             .map(|&(a, b)| (Decimal::try_from(a).unwrap(), Decimal::try_from(b).unwrap()))
             .collect();
-        let tariff = TariffFactory::multiflat(&blocks, dec!(1.0)).unwrap();
+        let tariff = TariffFactory::multiflat(&blocks, dec!(1.0), None)
+            .unwrap()
+            .build()
+            .unwrap();
 
         let cost = |b: u32, d: u32| -> Decimal {
             tariff

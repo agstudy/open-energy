@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, sync::LazyLock};
 /// AER-published energy retailer base URIs (January 2026).
 /// Key   = retailer name as it appears on the AER list.
 /// Value = the correct base URI for that retailer's CDR product data.
-/// list is here : https://www.aer.gov.au/system/files/2026-01/Consumer%20Data%20Right%20-%20Energy%20Retailer%20Base%20URIs%20and%20CDR%20Brands%20-%20January%202026.pdf#1#1
+/// list is here : <https://www.aer.gov.au/system/files/2026-01/Consumer%20Data%20Right%20-%20Energy%20Retailer%20Base%20URIs%20and%20CDR%20Brands%20-%20January%202026.pdf#1#1>
 pub static ENERGY_BASE_URIS: LazyLock<BTreeMap<&'static str, &'static str>> = LazyLock::new(|| {
     let mut m = BTreeMap::new();
 

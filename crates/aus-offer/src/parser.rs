@@ -1,4 +1,4 @@
-// crates/offers/src/parser.rs
+/* // crates/offers/src/parser.rs
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use serde::Deserialize;
@@ -315,3 +315,4 @@ mod tests {
         assert_eq!(offer.tariff.rates[0].rate, Decimal::new(194, 1));
     }
 }
+ */

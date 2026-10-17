@@ -13,5 +13,8 @@ chrono = { workspace = true }
 chrono-tz = { workspace = true }
 
 bill-pricer = { path = "../bill-pricer" }
-tokio = {workspace = true}
-reqwest = {workspace = true}
+gen-meter = { path = "../gen-meter" }
+
+domain = { path = "../../domain" }
+tokio = { workspace = true }
+reqwest = { workspace = true }

@@ -1,13 +1,8 @@
-
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
-
-
-
-
 /// Specifies the charge specific time zone for calculation of the time of use thresholds.
-/// If absent, timezone value in PlanContract is assumed.
+/// If absent, timezone value in `PlanContract` is assumed.
 #[derive(Debug, Deserialize)]
 pub enum TimeZone {
     #[serde(rename = "LOCAL")]
@@ -35,7 +30,7 @@ pub enum MeasureUnitEnum {
     #[serde(rename = "MONTH")]
     Month,
 }
-///
+
 #[derive(Debug, Deserialize)]
 pub enum EnergyDaysEnum {
     #[serde(rename = "SUN")]
@@ -59,7 +54,7 @@ pub enum EnergyDaysEnum {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RateDto {
-    pub unit_price: Decimal, // "0.2587"
+    pub unit_price: Decimal,     // "0.2587"
     pub volume: Option<Decimal>, // 20000
     /// The measurement unit of rate. Assumed to be `KWH` if absent.
     pub measure_unit: Option<MeasureUnitEnum>,
@@ -67,13 +62,13 @@ pub struct RateDto {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TimeOfUseDayTimeBand {
+pub struct DaysTimeBand {
     pub days: Vec<EnergyDaysEnum>,
     pub start_time: String,
     pub end_time: String,
 }
 
-/// EnergyPlanGeography : Describes the geographical area that the plan is available for.
+/// `EnergyPlanGeography` : Describes the geographical area that the plan is available for.
 /// If absent then it is assumed the plan is not geographically limited.
 #[derive(Clone, Default, Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]

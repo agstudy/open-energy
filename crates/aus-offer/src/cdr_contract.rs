@@ -1,11 +1,13 @@
-
+use bill_pricer::tariff::{Tariff, TariffBuilder};
 use serde::Deserialize;
 
-use crate::{cdr_discount::PlanDiscount, cdr_domain::TimeZone, cdr_eligibility::PlanEligibility, cdr_solar::PlanSolarTariff, cdr_tariff::PlanTariff};
-
-
-
-
+use crate::{
+    cdr_discount::PlanDiscount,
+    cdr_domain::TimeZone,
+    cdr_eligibility::PlanEligibility,
+    cdr_solar::PlanSolarTariff,
+    cdr_tariff::{PeriodTariff, PeriodTariffError},
+};
 
 /// The pricing model for the contract. Contracts for gas must use `SINGLE_RATE`. Note that the detail for the enumeration values are:<ul><li>`SINGLE_RATE`: all energy usage is charged at a single unit rate no matter when it is consumed. Multiple unit rates may exist that correspond to varying volumes of usage i.e. a 'block' or 'step' tariff (first 50kWh @ X cents, next 50kWh at Y cents etc.)</li><li>`SINGLE_RATE_CONT_LOAD`: as above, but with an additional, separate unit rate charged for all energy usage from a controlled load i.e. separately metered appliance like hot water service, pool pump etc.</li><li>`TIME_OF_USE`: energy usage is charged at unit rates that vary dependent on time of day and day of week that the energy is consumed</li><li>`TIME_OF_USE_CONT_LOAD`: as above, but with an additional, separate unit rate charged for all energy usage from a controlled load i.e. separately metered appliance like hot water service, pool pump etc.</li><li>`FLEXIBLE`: energy usage is charged at unit rates that vary based on external factors</li><li>`FLEXIBLE_CONT_LOAD`: as above, but with an additional, separate unit rate charged for all energy usage from a controlled load i.e. separately metered appliance like hot water service, pool pump etc.</li><li>`QUOTA`: all energy usage is charged at a single fixed rate, up to a specified usage quota/allowance. All excess usage beyond the allowance is then charged at a single unit rate. i.e. $50/month for up to 150kWh included usage.</li></ul>
 #[derive(Debug, Deserialize)]
@@ -26,7 +28,6 @@ pub enum PricingModel {
     Quota,
 }
 
-
 /// The type of the incentive.
 #[derive(Debug, Deserialize)]
 pub enum IncentiveCategory {
@@ -45,9 +46,6 @@ pub struct PlanIncentive {
     pub eligibility: Option<String>,
 }
 
-
-
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanContract {
@@ -57,5 +55,45 @@ pub struct PlanContract {
     pub discounts: Option<Vec<PlanDiscount>>,
     pub eligibility: Option<Vec<PlanEligibility>>,
     pub solar_feed_in_tariff: Option<Vec<PlanSolarTariff>>,
-    pub tariff_period: Vec<PlanTariff>,
+    pub tariff_period: Vec<PeriodTariff>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ParseContractError {
+    #[error("tariff: {0}")]
+    ParseTariff(#[from] PeriodTariffError),
+
+    #[error("pricing model {0:?} is not implemented yet")]
+    NotImplemented(PricingModel),
+}
+
+impl PlanContract {
+    pub fn build_tariff(&self) -> Result<Vec<Tariff>, ParseContractError> {
+        let tariff_builder = match &self.pricing_model {
+            PricingModel::SingleRate | PricingModel::SingleRateContLoad => Ok(self
+                .tariff_period
+                .iter()
+                .map(PeriodTariff::build_single_rate)
+                .collect::<Result<Vec<_>, _>>()?),
+            PricingModel::TimeOfUse
+            | PricingModel::TimeOfUseContLoad
+            | PricingModel::Flexible
+            | PricingModel::FlexibleContLoad => Ok(self
+                .tariff_period
+                .iter()
+                .map(PeriodTariff::build_time_of_use)
+                .collect::<Result<Vec<_>, _>>()?),
+            PricingModel::Quota => Err(ParseContractError::NotImplemented(PricingModel::Quota)),
+        };
+
+        // add cload , solar ,fees  .. here
+
+        // create tariffs
+        let tariffs = tariff_builder?
+            .into_iter()
+            .map(TariffBuilder::build)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(PeriodTariffError::from)?;
+        Ok(tariffs)
+    }
 }

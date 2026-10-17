@@ -12,7 +12,6 @@ pub enum DiscountType {
     Other,
 }
 
-
 /// The type of the discount. Mandatory if the discount _type_ is `CONDITIONAL`.
 #[derive(Debug, Deserialize)]
 pub enum DiscountCategory {
@@ -26,9 +25,8 @@ pub enum DiscountCategory {
     Other,
 }
 
-
 /// The method of calculation of the discount.
-#[derive( Debug, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub enum DiscountCalculationType {
     #[serde(rename = "percentOfBill")]
     PercentOfBill,
@@ -54,9 +52,6 @@ pub struct FixedAmount {
     pub amount: Decimal,
 }
 
-
-
-
 #[derive(Debug, Deserialize)]
 pub struct PercentOfBill {
     /// The rate of the discount applied to the bill amount.
@@ -71,7 +66,7 @@ pub struct PercentOverThreshold {
     pub usage_amount: Decimal,
 }
 
-#[derive( Debug, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanDiscount {
     /// The type of the discount.

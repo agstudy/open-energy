@@ -3,7 +3,6 @@ use serde::Deserialize;
 
 use crate::cdr_domain::{EnergyDaysEnum, MeasureUnitEnum};
 
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DemandTariff {
@@ -39,5 +38,3 @@ pub enum ChargePeriod {
     #[serde(rename = "TARIFF_PERIOD")]
     TariffPeriod,
 }
-
-

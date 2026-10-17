@@ -15,7 +15,7 @@ chrono = { workspace = true }
 chrono-tz = { workspace = true }
 tokio = { workspace = true }
 reqwest = { workspace = true }
-
+rayon = {workspace = true}
 
 meter-parser = { path = "../meter-parser" }
 bill-pricer = { path = "../bill-pricer" }
