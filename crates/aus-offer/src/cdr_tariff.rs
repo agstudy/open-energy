@@ -174,11 +174,11 @@ impl PeriodTariff {
             .ok_or(PeriodTariffError::MissingField("dailySupplyCharge"))
     }
 
-    pub fn build_single_rate(&self) -> Result<TariffBuilder, PeriodTariffError> {
+    pub fn single_rate_builder(&self) -> Result<TariffBuilder, PeriodTariffError> {
 
         if self.rate_block_u_type == RateBlockUType::DemandCharges 
         {
-            return self.build_demand();
+            return self.demand_builder();
         }
         let single = self
             .single_rate
@@ -211,13 +211,13 @@ impl PeriodTariff {
             .map_err(PeriodTariffError::from)
     }
 
-    pub fn build_demand(&self) -> Result<TariffBuilder, PeriodTariffError> {
+    pub fn demand_builder(&self) -> Result<TariffBuilder, PeriodTariffError> {
         Err(PeriodTariffError::NotImplemented(
             RateBlockUType::DemandCharges,
         ))
     }
 
-    pub fn build_time_of_use(&self) -> Result<TariffBuilder, PeriodTariffError> {
+    pub fn time_of_use_builder(&self) -> Result<TariffBuilder, PeriodTariffError> {
         Err(PeriodTariffError::NotImplemented(
             RateBlockUType::TimeOfUseRates,
         ))

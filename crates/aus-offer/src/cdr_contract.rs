@@ -27,6 +27,38 @@ pub enum PricingModel {
     #[serde(rename = "QUOTA")]
     Quota,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BasePricingModel {
+    SingleRate,
+    TimeOfUse,
+    Flexible,
+    Quota,
+}
+
+impl PricingModel {
+    #[must_use]
+    pub fn base(&self) -> BasePricingModel {
+        match self {
+            PricingModel::SingleRate | PricingModel::SingleRateContLoad => {
+                BasePricingModel::SingleRate
+            }
+            PricingModel::TimeOfUse | PricingModel::TimeOfUseContLoad => {
+                BasePricingModel::TimeOfUse
+            }
+            PricingModel::Flexible | PricingModel::FlexibleContLoad => BasePricingModel::Flexible,
+            PricingModel::Quota => BasePricingModel::Quota,
+        }
+    }
+    #[must_use]
+    pub fn has_controlled_load(&self) -> bool {
+        matches!(
+            self,
+            PricingModel::SingleRateContLoad
+                | PricingModel::TimeOfUseContLoad
+                | PricingModel::FlexibleContLoad
+        )
+    }
+}
 
 /// The type of the incentive.
 #[derive(Debug, Deserialize)]
@@ -69,27 +101,27 @@ pub enum ParseContractError {
 
 impl PlanContract {
     pub fn build_tariff(&self) -> Result<Vec<Tariff>, ParseContractError> {
-        let tariff_builder = match &self.pricing_model {
-            PricingModel::SingleRate | PricingModel::SingleRateContLoad => Ok(self
-                .tariff_period
-                .iter()
-                .map(PeriodTariff::build_single_rate)
-                .collect::<Result<Vec<_>, _>>()?),
-            PricingModel::TimeOfUse
-            | PricingModel::TimeOfUseContLoad
-            | PricingModel::Flexible
-            | PricingModel::FlexibleContLoad => Ok(self
-                .tariff_period
-                .iter()
-                .map(PeriodTariff::build_time_of_use)
-                .collect::<Result<Vec<_>, _>>()?),
-            PricingModel::Quota => Err(ParseContractError::NotImplemented(PricingModel::Quota)),
-        };
+        let builder_for_period: fn(&PeriodTariff) -> Result<TariffBuilder, PeriodTariffError> =
+            match &self.pricing_model.base() {
+                BasePricingModel::SingleRate => PeriodTariff::single_rate_builder,
+                BasePricingModel::TimeOfUse | BasePricingModel::Flexible => {
+                    PeriodTariff::time_of_use_builder
+                }
+                BasePricingModel::Quota => {
+                    return Err(ParseContractError::NotImplemented(PricingModel::Quota));
+                }
+            };
+
+        let builders = self
+            .tariff_period
+            .iter()
+            .map(builder_for_period)
+            .collect::<Result<Vec<_>, _>>()?;
 
         // add cload , solar ,fees  .. here
 
         // create tariffs
-        let tariffs = tariff_builder?
+        let tariffs = builders
             .into_iter()
             .map(TariffBuilder::build)
             .collect::<Result<Vec<_>, _>>()

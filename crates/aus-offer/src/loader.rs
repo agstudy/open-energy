@@ -131,7 +131,7 @@ pub async fn get_plan_detail(
 }
 
 pub fn parse_offer_file(path: &Path) -> Result<Vec<Tariff>, LoadError> {
-    let body = std::fs::read_to_string(&path)?;
+    let body = std::fs::read_to_string(path)?;
     let res = serde_json::from_str::<PlanDetailResponse>(&body)?;
     let tariff = res.data.electricity_contract.build_tariff()?;
     Ok(tariff)
@@ -214,7 +214,7 @@ mod tests {
         let pricing_input = priced(&smart_meter, "Australia/Sydney");
 
         assert_eq!(
-            price(&tariff, &pricing_input).unwrap().total_bill,
+            price(tariff, &pricing_input).unwrap().total_bill,
             dec!(8.04)
         );
     }
