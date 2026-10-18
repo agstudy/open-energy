@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn parses_origin_multiflat_vic_offer() {
-        let json = include_str!("../data/OR2810912MS@VEC.json");
+        let json = include_str!("../data/flat/OR2810912MS@VEC.json");
         let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
 
         let tariffs = offer.data.electricity_contract.build_tariff().unwrap();
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn parses_tou_overlapp_tariff() {
-        let json = include_str!("../data/1ST764143MS@VEC.json");
+        let json = include_str!("../data/tou/1ST764143MS@VEC.json");
         let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
 
         let tariffs = offer.data.electricity_contract.build_tariff().unwrap();
@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn parses_tou_start_bigger_end_tariff() {
-        let json = include_str!("../data/RED552217MBE13@EME.json");
+        let json = include_str!("../data/tou/RED552217MBE13@EME.json");
         let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
 
         let tariffs = offer.data.electricity_contract.build_tariff().unwrap();
@@ -299,4 +299,18 @@ mod tests {
         assert_eq!(tariff.supply_rate(), Decimal::try_from(1.30).unwrap());
         assert_eq!(tariff.consumption_period(), None);
     }
+
+    #[test] 
+    fn parses_tou_missing_tou() {
+        let json = include_str!("../data/tou/FLO806120MR@VEC.json");
+        let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
+
+        let tariffs = offer.data.electricity_contract.build_tariff().unwrap();
+        assert_eq!(tariffs.len(), 1);
+        let tariff = tariffs.first().unwrap();
+
+        assert_eq!(tariff.supply_rate(), Decimal::try_from(1.7035).unwrap());
+        assert_eq!(tariff.consumption_period(), None);
+    }
+
 }

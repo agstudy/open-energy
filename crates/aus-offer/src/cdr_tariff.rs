@@ -87,6 +87,7 @@ pub enum ResetPeriod {
 #[serde(rename_all = "camelCase")]
 pub struct TimeOfUseRates {
     pub rates: Vec<RateDto>,
+    #[serde(alias = "timeVariations")]
     pub time_of_use: Vec<DaysTimeBand>,
     #[serde(rename = "period")]
     pub reset_period: Option<ResetPeriod>,
