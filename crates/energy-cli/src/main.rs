@@ -221,20 +221,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn parse_offers_dir(dir: &Path) -> Vec<Tariff> {
     let files: Vec<PathBuf> = std::fs::read_dir(dir)
         .unwrap()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .map(|e| e.path())
         .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "json"))
         .collect();
 
-    let results: Vec<Result<Vec<Tariff>, LoadError>> =
-        files.par_iter().map(|p| parse_offer_file(p)).collect();
+    let results: Vec<(PathBuf, Result<Vec<Tariff>, LoadError>)> = files
+        .par_iter()
+        .map(|p| (p.clone(), parse_offer_file(p)))
+        .collect();
 
     // Split successes and failures
     let mut tariffs = Vec::new();
-    for r in results {
+    for (path, r) in results {
         match r {
             Ok(ts) => tariffs.extend(ts),
-            Err(e) => eprintln!("skipping file: {e}"),
+            Err(e) => eprintln!("skipping {}: {e}", path.display()),
         }
     }
 

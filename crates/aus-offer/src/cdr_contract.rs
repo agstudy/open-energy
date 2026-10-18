@@ -100,22 +100,21 @@ pub enum ParseContractError {
 }
 
 impl PlanContract {
+    /// Builds the list of tariffs described by this contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseContractError`] if the contract data is malformed, e.g.
+    /// missing required fields or an unrecognised tariff structure.
     pub fn build_tariff(&self) -> Result<Vec<Tariff>, ParseContractError> {
-        let builder_for_period: fn(&PeriodTariff) -> Result<TariffBuilder, PeriodTariffError> =
-            match &self.pricing_model.base() {
-                BasePricingModel::SingleRate => PeriodTariff::single_rate_builder,
-                BasePricingModel::TimeOfUse | BasePricingModel::Flexible => {
-                    PeriodTariff::time_of_use_builder
-                }
-                BasePricingModel::Quota => {
-                    return Err(ParseContractError::NotImplemented(PricingModel::Quota));
-                }
-            };
+        if self.pricing_model.base() == BasePricingModel::Quota {
+            return Err(ParseContractError::NotImplemented(PricingModel::Quota));
+        }
 
         let builders = self
             .tariff_period
             .iter()
-            .map(builder_for_period)
+            .map(PeriodTariff::builder)
             .collect::<Result<Vec<_>, _>>()?;
 
         // add cload , solar ,fees  .. here

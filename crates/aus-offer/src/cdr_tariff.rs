@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::{
     cdr_demand::DemandTariff,
-    cdr_domain::{DaysTimeBand, RateDto, TimeZone},
+    cdr_domain::{BuildTimeBandError, DaysTimeBand, RateDto, TimeZone},
 };
 
 /// Type of charge. Assumed to be `OTHER` if absent.
@@ -45,8 +45,8 @@ pub enum RateBlockUType {
     SingleRates,
     #[serde(rename = "timeOfUseRates")]
     TimeOfUseRates,
-    #[serde(rename = "demandCharges")]
-    DemandCharges,
+    // #[serde(rename = "demandCharges")]
+    // DemandCharges,
 }
 
 /// `SingleRates` : Object representing a flat/multiflat(with reset period)
@@ -87,7 +87,6 @@ pub enum ResetPeriod {
 #[serde(rename_all = "camelCase")]
 pub struct TimeOfUseRates {
     pub rates: Vec<RateDto>,
-    #[serde(rename = "timeVariations")]
     pub time_of_use: Vec<DaysTimeBand>,
     #[serde(rename = "period")]
     pub reset_period: Option<ResetPeriod>,
@@ -158,9 +157,32 @@ pub enum PeriodTariffError {
 
     #[error("unsupported band supply")]
     UnsupportedBandSupply,
+
+    #[error(transparent)]
+    TimeBandError(#[from] BuildTimeBandError),
 }
 
 impl PeriodTariff {
+    /// Builds a [`TariffBuilder`] for this period block by dispatching on
+    /// [`RateBlockUType`].
+    ///
+    /// A `SingleRates` block is built via [`Self::single_rate_builder`];
+    /// a `TimeOfUseRates` block via [`Self::time_of_use_builder`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PeriodTariffError::MissingField`] if the field matching
+    /// `rate_block_u_type` is absent (e.g. `singleRate` missing on a
+    /// `SingleRates` block), and any error from the underlying builder
+    /// (e.g. [`PeriodTariffError::Tariff`] from `TariffFactory`,
+    /// [`PeriodTariffError::UnsupportedBandSupply`], or
+    /// [`PeriodTariffError::TimeBandError`]).
+    pub fn builder(&self) -> Result<TariffBuilder, PeriodTariffError> {
+        match self.rate_block_u_type {
+            RateBlockUType::SingleRates => self.single_rate_builder(),
+            RateBlockUType::TimeOfUseRates => self.time_of_use_builder(),
+        }
+    }
     fn get_supply_rate(&self) -> Result<Decimal, PeriodTariffError> {
         if self
             .daily_supply_charge_type
@@ -174,28 +196,77 @@ impl PeriodTariff {
             .ok_or(PeriodTariffError::MissingField("dailySupplyCharge"))
     }
 
+    /// Creates a builder for a single-rate tariff.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PeriodTariffError`] if the tariff's period definition is invalid
+    /// or inconsistent with a single-rate structure.
     pub fn single_rate_builder(&self) -> Result<TariffBuilder, PeriodTariffError> {
-
-        if self.rate_block_u_type == RateBlockUType::DemandCharges 
-        {
-            return self.demand_builder();
-        }
         let single = self
             .single_rate
             .as_ref()
             .ok_or(PeriodTariffError::MissingField("singleRate"))?;
 
+        let rates = Self::block_rates(&single.rates);
+
+        let consumption_period = Self::get_consumption_period(&rates, single.reset_period.as_ref());
+
+        let supply_rate = self.get_supply_rate()?;
+        TariffFactory::multiflat(&rates, supply_rate, consumption_period)
+            .map_err(PeriodTariffError::from)
+    }
+
+    /// Creates a builder for a time-of-use tariff.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PeriodTariffError`] if the tariff's time bands are invalid,
+    /// overlapping, or leave gaps in coverage.
+    pub fn time_of_use_builder(&self) -> Result<TariffBuilder, PeriodTariffError> {
+        let tou_rates = self
+            .time_of_use_rates
+            .as_ref()
+            .ok_or(PeriodTariffError::MissingField("timeOfUseRates"))?;
+
+        let mut builder = TariffBuilder::default();
+        for tou_period in tou_rates {
+            let blocks = Self::block_rates(&tou_period.rates);
+            for time_band in &tou_period.time_of_use {
+                for tb in time_band.to_time_band()? {
+                    builder = builder.add_rate_period(&blocks, tb);
+                }
+            }
+            builder = builder.consumption_period(Self::get_consumption_period(
+                &blocks,
+                tou_period.reset_period.as_ref(),
+            ));
+        }
+
+        builder = builder.daily_supply(self.get_supply_rate()?);
+
+        Ok(builder)
+    }
+
+    /// create rates blocks with lower limit
+    fn block_rates(rates: &[RateDto]) -> Vec<(Decimal, Decimal)> {
         let mut blocks = Vec::new();
         let mut prev_upper = Decimal::ZERO;
-        for rate in &single.rates {
+        for rate in rates {
             blocks.push((rate.unit_price, prev_upper));
             if let Some(v) = rate.volume {
                 prev_upper = v;
             }
         }
-
-        let consumption_period = if blocks.len() > 1 {
-            single.reset_period.as_ref().and_then(|p| match p {
+        blocks
+    }
+    /// helper to parse consumption period
+    fn get_consumption_period(
+        rates: &[(Decimal, Decimal)],
+        reset_period: Option<&ResetPeriod>,
+    ) -> Option<ConsumptionPeriod> {
+        if rates.len() > 1 {
+            reset_period.as_ref().and_then(|p| match p {
                 ResetPeriod::Daily => Some(ConsumptionPeriod::Day),
                 ResetPeriod::Monthly => Some(ConsumptionPeriod::Month),
                 ResetPeriod::BiMonthly => Some(ConsumptionPeriod::BiMonthly),
@@ -204,22 +275,6 @@ impl PeriodTariff {
             })
         } else {
             None
-        };
-
-        let supply_rate = self.get_supply_rate()?;
-        TariffFactory::multiflat(&blocks, supply_rate, consumption_period)
-            .map_err(PeriodTariffError::from)
-    }
-
-    pub fn demand_builder(&self) -> Result<TariffBuilder, PeriodTariffError> {
-        Err(PeriodTariffError::NotImplemented(
-            RateBlockUType::DemandCharges,
-        ))
-    }
-
-    pub fn time_of_use_builder(&self) -> Result<TariffBuilder, PeriodTariffError> {
-        Err(PeriodTariffError::NotImplemented(
-            RateBlockUType::TimeOfUseRates,
-        ))
+        }
     }
 }

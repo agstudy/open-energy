@@ -28,17 +28,17 @@ pub enum LoadError {
     Reqwest(#[from] reqwest::Error),
     #[error("join: {0}")]
     Join(#[from] JoinError),
-    #[error("No base url for: {0}")]
-    NoBaseUrl(String),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
     ParseError(#[from] ParseContractError),
 }
-
-async fn save_plan(body: &str, plan_id: &str) {
-    let path = format!("/tmp/plans/{plan_id}.json");
-    fs::write(&path, body).await.unwrap();
+/// save plan by id
+async fn save_plan(body: &str, plan_id: &str) -> Result<(), LoadError> {
+    tokio::fs::create_dir_all(CACHE_DIR).await?;
+    let path = PathBuf::from(CACHE_DIR).join(format!("{plan_id}.json"));
+    fs::write(&path, body).await?;
+    Ok(())
 }
 
 // -----requests
@@ -54,7 +54,15 @@ async fn fetch_url(client: &Client, url: &str, version: u32) -> Result<String, r
         .await?;
     Ok(body)
 }
-
+/// Fetches a page of plans for a retailer from the given base URL.
+///
+/// # Errors
+///
+/// Returns [`LoadError`] if:
+/// - an HTTP request fails or the response status is not success
+///   ([`LoadError::Reqwest`]),
+/// - a response body cannot be deserialised into [`PlanResponseDto`]
+///   ([`LoadError::JsonInUrl`]).
 pub async fn get_retailer_plans(
     client: &Client,
     retailer_base_url: &str,
@@ -79,33 +87,47 @@ pub async fn get_retailer_plans(
     }
     Ok(all)
 }
-
+/// Fetches the plan catalogue for all retailers.
+///
+/// # Errors
+///
+/// Returns [`LoadError`] if:
+/// - any underlying HTTP request fails ([`LoadError::Reqwest`]),
+/// - a response body cannot be deserialised ([`LoadError::JsonInUrl`]),
+/// - a spawned fetch task panics or is cancelled ([`LoadError::Join`]).
 pub async fn get_all_retailer_plans(client: &Client) -> Result<HashMap<String, String>, LoadError> {
-    let mut set: JoinSet<Result<Vec<(String, String)>, LoadError>> = JoinSet::new();
+    let mut set: JoinSet<Result<HashMap<String, String>, LoadError>> = JoinSet::new();
 
     for &url in ENERGY_BASE_URIS.values() {
         // Arc handle for the task (refcount bump, not a Client clone)
         let client = client.clone();
         set.spawn(async move {
-            let plans = get_retailer_plans(&client.clone(), url, 1000).await?;
+            let plans = get_retailer_plans(&client, url, 1000).await?;
 
-            let result = plans
-                .iter()
-                .map(|p| (p.plan_id.clone(), url.to_string()))
-                .collect::<Vec<(String, String)>>();
-            Ok(result)
+            Ok(plans
+                .into_iter()
+                .map(|p| (p.plan_id, url.to_string()))
+                .collect::<HashMap<_, _>>())
         });
     }
+
     let mut result: HashMap<String, String> = HashMap::new();
     while let Some(res) = set.join_next().await {
-        for (plan_id, url) in res?? {
-            result.insert(plan_id, url);
-        }
+        let partial = res??;
+        result.extend(partial);
     }
 
     Ok(result)
 }
 
+/// Fetches the detailed record for a single plan.
+///
+/// # Errors
+///
+/// Returns [`LoadError`] if:
+/// - the HTTP request fails or the response status is not success  ([`LoadError::Reqwest`]),
+/// - the response body cannot be deserialised into [`PlanDetailResponse`]  ([`LoadError::JsonInUrl`]).
+/// - the response cannot be saved to the on-disk cache   ([`LoadError::Io`]).
 pub async fn get_plan_detail(
     client: &Client,
     retailer_base_url: &str,
@@ -114,7 +136,7 @@ pub async fn get_plan_detail(
     let url = format!("{retailer_base_url}cds-au/v1/energy/plans/{plan_id}");
     let body = fetch_url(client, &url, 3).await?;
 
-    save_plan(&body, plan_id).await;
+    save_plan(&body, plan_id).await?;
 
     match serde_json::from_str::<PlanDetailResponse>(body.as_str()) {
         Err(e) => {
@@ -130,6 +152,15 @@ pub async fn get_plan_detail(
     }
 }
 
+/// Parses an offer file on disk into a list of tariffs.
+/// # Errors
+///
+/// Returns [`LoadError`] if:
+/// - the file cannot be read ([`LoadError::Io`]),
+/// - the file's contents are not valid JSON for a [`PlanDetailResponse`]
+///   ([`LoadError::Json`]),
+/// - the embedded electricity contract is invalid
+///   ([`LoadError::ParseError`] wrapping [`ParseContractError`]).
 pub fn parse_offer_file(path: &Path) -> Result<Vec<Tariff>, LoadError> {
     let body = std::fs::read_to_string(path)?;
     let res = serde_json::from_str::<PlanDetailResponse>(&body)?;
@@ -137,6 +168,21 @@ pub fn parse_offer_file(path: &Path) -> Result<Vec<Tariff>, LoadError> {
     Ok(tariff)
 }
 
+/// Fetches the details for every plan across all retailers.
+///
+/// Uses a per-plan on-disk cache under [`CACHE_DIR`]; cached plans are read
+/// from disk instead of being re-fetched.
+///
+/// # Errors
+///
+/// Returns [`LoadError`] if:
+/// - the initial catalogue fetch fails ([`LoadError::Reqwest`],
+///   [`LoadError::JsonInUrl`], [`LoadError::Join`]),
+/// - a cached plan file cannot be read ([`LoadError::Io`]) or its contents
+///   are not valid JSON ([`LoadError::Json`]),
+/// - fetching or decoding an uncached plan fails ([`LoadError::Reqwest`],
+///   [`LoadError::JsonInUrl`]),
+/// - a spawned task panics or is cancelled ([`LoadError::Join`]).
 pub async fn get_all_plans_details(
     client: &Client,
 ) -> Result<HashMap<String, PlanDetail>, LoadError> {
@@ -147,7 +193,6 @@ pub async fn get_all_plans_details(
         let client = client.clone();
         set.spawn(async move {
             let path = PathBuf::from(CACHE_DIR).join(format!("{plan_id}.json"));
-
             let plan = if tokio::fs::try_exists(&path).await? {
                 let body = tokio::fs::read_to_string(&path).await?;
                 let res = serde_json::from_str::<PlanDetailResponse>(&body)?;
@@ -155,7 +200,6 @@ pub async fn get_all_plans_details(
             } else {
                 get_plan_detail(&client, &url, &plan_id).await?
             };
-            // let tariffs = plan.electricity_contract.build_tariff().unwrap();
             Ok(plan)
         });
     }
@@ -172,7 +216,9 @@ pub async fn get_all_plans_details(
 mod tests {
     use bill_pricer::{pricer::price, tariff::ConsumptionPeriod};
     use chrono_tz::Tz;
-    use domain::meter::{MeterMeasure, PricingInput};
+    use domain::{
+        meter::{MeterMeasure, PricingInput},
+    };
     use gen_meter::generator::{GeneratorConfig, generate_smart_meter};
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
@@ -217,5 +263,40 @@ mod tests {
             price(tariff, &pricing_input).unwrap().total_bill,
             dec!(8.04)
         );
+    }
+
+    #[test]
+    fn parses_tou_overlapp_tariff() {
+        let json = include_str!("../data/1ST764143MS@VEC.json");
+        let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
+
+        let tariffs = offer.data.electricity_contract.build_tariff().unwrap();
+        assert_eq!(tariffs.len(), 1);
+        let tariff = tariffs.first().unwrap();
+
+        assert_eq!(tariff.supply_rate(), Decimal::try_from(1.498).unwrap());
+        assert_eq!(tariff.consumption_period(), None);
+
+        //This plan: the converted weekday windows are [00:00–08:59, 09:00–20:59, 21:00–23:59].
+        let windows = tariff
+            .import_tariff()
+            .iter()
+            .map(|r| format!("{}-{}", r.time_band.start(), r.time_band.end()))
+            .collect::<Vec<String>>();
+
+        assert_eq!(windows,["09:00-20:59", "21:00-23:59", "00:00-08:59", "00:00-23:59"]);
+    }
+
+    #[test]
+    fn parses_tou_start_bigger_end_tariff() {
+        let json = include_str!("../data/RED552217MBE13@EME.json");
+        let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
+
+        let tariffs = offer.data.electricity_contract.build_tariff().unwrap();
+        assert_eq!(tariffs.len(), 1);
+        let tariff = tariffs.first().unwrap();
+
+        assert_eq!(tariff.supply_rate(), Decimal::try_from(1.30).unwrap());
+        assert_eq!(tariff.consumption_period(), None);
     }
 }

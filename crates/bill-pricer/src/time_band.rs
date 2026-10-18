@@ -62,13 +62,8 @@ pub struct TimeBand {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub struct InvalidTimeBand;
-
-impl std::fmt::Display for InvalidTimeBand {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TimeBand start must be <= end")
-    }
-}
+#[error("TimeBand start {0} must be <= end {1}")]
+pub struct InvalidTimeBand(HourMinute, HourMinute);
 
 impl TryFrom<TimeBandRow> for TimeBand {
     type Error = InvalidTimeBand;
@@ -90,7 +85,7 @@ impl TimeBand {
         days_of_week: Option<WeekDays>,
     ) -> Result<Self, InvalidTimeBand> {
         if start > end {
-            Err(InvalidTimeBand)
+            Err(InvalidTimeBand(start, end))
         } else {
             Ok(TimeBand {
                 start,

@@ -337,16 +337,20 @@ impl Default for RatePeriodBuilder {
     }
 }
 
+fn rates_mapper(rates: &[(Decimal, Decimal)]) -> Vec<RateBlock> {
+    rates
+        .iter()
+        .map(|(r, b)| RateBlock {
+            rate: *r,
+            lower_band: *b,
+        })
+        .collect()
+}
+
 impl RatePeriodBuilder {
     #[must_use]
     pub fn rates(mut self, block_rates: &[(Decimal, Decimal)]) -> Self {
-        self.rates = block_rates
-            .iter()
-            .map(|(r, b)| RateBlock {
-                rate: *r,
-                lower_band: *b,
-            })
-            .collect();
+        self.rates = rates_mapper(block_rates);
         self
     }
 
@@ -412,6 +416,19 @@ impl TariffBuilder {
         self.import.push(builder.build());
 
         Ok(self)
+    }
+
+    /// Adds an import rate period using direct `RatePeriod` parameters
+    ///
+    /// Overlap and coverage are not checked here; they are validated by
+    /// [`TariffBuilder::build`].
+    #[must_use]
+    pub fn add_rate_period(mut self, rates: &[(Decimal, Decimal)], time_band: TimeBand) -> Self {
+        self.import.push(RatePeriod {
+            rates: rates_mapper(rates),
+            time_band,
+        });
+        self
     }
 
     /// Adds an export (feed-in) rate period using the given builder closure.
