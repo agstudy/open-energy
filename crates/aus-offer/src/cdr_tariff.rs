@@ -45,8 +45,8 @@ pub enum RateBlockUType {
     SingleRates,
     #[serde(rename = "timeOfUseRates")]
     TimeOfUseRates,
-    // #[serde(rename = "demandCharges")]
-    // DemandCharges,
+    #[serde(rename = "demandCharges")]
+    DemandCharges,
 }
 
 /// `SingleRates` : Object representing a flat/multiflat(with reset period)
@@ -182,6 +182,11 @@ impl PeriodTariff {
         match self.rate_block_u_type {
             RateBlockUType::SingleRates => self.single_rate_builder(),
             RateBlockUType::TimeOfUseRates => self.time_of_use_builder(),
+            RateBlockUType::DemandCharges => {
+                return Err(PeriodTariffError::NotImplemented(
+                    RateBlockUType::DemandCharges,
+                ));
+            }
         }
     }
     fn get_supply_rate(&self) -> Result<Decimal, PeriodTariffError> {

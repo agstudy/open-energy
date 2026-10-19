@@ -216,9 +216,7 @@ pub async fn get_all_plans_details(
 mod tests {
     use bill_pricer::{pricer::price, tariff::ConsumptionPeriod};
     use chrono_tz::Tz;
-    use domain::{
-        meter::{MeterMeasure, PricingInput},
-    };
+    use domain::meter::{MeterMeasure, PricingInput};
     use gen_meter::generator::{GeneratorConfig, generate_smart_meter};
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
@@ -284,33 +282,31 @@ mod tests {
             .map(|r| format!("{}-{}", r.time_band.start(), r.time_band.end()))
             .collect::<Vec<String>>();
 
-        assert_eq!(windows,["09:00-20:59", "21:00-23:59", "00:00-08:59", "00:00-23:59"]);
+        assert_eq!(
+            windows,
+            ["09:00-20:59", "21:00-23:59", "00:00-08:59", "00:00-23:59"]
+        );
     }
 
     #[test]
     fn parses_tou_start_bigger_end_tariff() {
         let json = include_str!("../data/tou/RED552217MBE13@EME.json");
         let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
-
         let tariffs = offer.data.electricity_contract.build_tariff().unwrap();
         assert_eq!(tariffs.len(), 1);
         let tariff = tariffs.first().unwrap();
-
         assert_eq!(tariff.supply_rate(), Decimal::try_from(1.30).unwrap());
         assert_eq!(tariff.consumption_period(), None);
     }
 
-    #[test] 
+    #[test]
     fn parses_tou_missing_tou() {
         let json = include_str!("../data/tou/FLO806120MR@VEC.json");
         let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
-
         let tariffs = offer.data.electricity_contract.build_tariff().unwrap();
         assert_eq!(tariffs.len(), 1);
         let tariff = tariffs.first().unwrap();
-
         assert_eq!(tariff.supply_rate(), Decimal::try_from(1.7035).unwrap());
         assert_eq!(tariff.consumption_period(), None);
     }
-
 }
