@@ -1,8 +1,8 @@
 use anyhow::Context;
 use anyhow::Result as AnyResult;
-use aus_offer::loader::LoadError;
 use aus_offer::loader::get_all_plans_details;
-use aus_offer::loader::parse_offer_file;
+use aus_offer::parser::ParseStats;
+use aus_offer::parser::parse_offers;
 use bill_pricer::pricer::PricingResult;
 use bill_pricer::pricer::price;
 use bill_pricer::tariff::{Tariff, TariffRaw};
@@ -13,7 +13,6 @@ use domain::HourMinute;
 use domain::meter::{MeterMeasure, PricingInput, merge_import_export};
 use gen_meter::generator::{GeneratorConfig, generate_smart_meter};
 use meter_parser::Nem12Parser;
-use rayon::prelude::*;
 use rust_decimal::Decimal;
 use std::fs::File;
 use std::io::BufReader;
@@ -148,7 +147,7 @@ impl SourceArgs {
         match (self.file, self.generated) {
             (Some(path), _) => {
                 eprintln!("--- Pricing NEM12 smart meter ---");
-                let parser = parse_file(&path).context("Failed to parse Nem12 file")?;
+                let parser = parse_meter_file(&path).context("Failed to parse Nem12 file")?;
                 Ok(merge_import_export(&parser.import(), &parser.export()))
             }
             (_, true) => {
@@ -209,43 +208,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             QueryCmd::Offers { dir } => {
-                for tariff in parse_offers_dir(&dir) {
-                    println!("{}", tariff.supply_rate());
-                }
+                let stat = parse_offers_dir(dir);
+                println!("{stat:?}");
             }
         },
     }
     Ok(())
 }
 
-fn parse_offers_dir(dir: &Path) -> Vec<Tariff> {
-    let files: Vec<PathBuf> = std::fs::read_dir(dir)
-        .unwrap()
-        .filter_map(std::result::Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "json"))
-        .collect();
-
-    let results: Vec<(PathBuf, Result<Vec<Tariff>, LoadError>)> = files
-        .par_iter()
-        .map(|p| (p.clone(), parse_offer_file(p)))
-        .collect();
-
-    // Split successes and failures
-    let mut tariffs = Vec::new();
-    for (path, r) in results {
-        match r {
-            Ok(ts) => tariffs.extend(ts),
-            Err(e) => eprintln!("skipping {}: {e}", path.display()),
-        }
-    }
-
-    tariffs
-}
-
 // --- Command Handlers ---
 
-fn parse_file(path: &Path) -> AnyResult<Nem12Parser> {
+fn parse_meter_file(path: &Path) -> AnyResult<Nem12Parser> {
     let file = File::open(path).with_context(|| format!("Could not open {}", path.display()))?;
 
     let mut parser = Nem12Parser::new();
@@ -265,7 +238,7 @@ fn parse_tariff_file(path: &Path) -> AnyResult<Tariff> {
 
 fn run_parse(path: &Path, verbose: bool) -> AnyResult<()> {
     eprintln!("--- Parsing NEM12 smart meter ---");
-    let parser = parse_file(path)?;
+    let parser = parse_meter_file(path)?;
     eprintln!("Success! Parsed {} days.", parser.results.len());
     if verbose {
         for result in &parser.results {
@@ -285,4 +258,15 @@ fn run_price(source: SourceArgs, tariff: TariffCmd, tz: &str) -> AnyResult<Prici
     let smart_meter = source.into_measures(tz)?;
     let pricing_input = PricingInput::new(Tz::from_str(tz)?, &smart_meter);
     Ok(price(&tariff, &pricing_input)?)
+}
+
+fn parse_offers_dir(dir: PathBuf) -> ParseStats {
+    let files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .unwrap()
+        .filter_map(std::result::Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "json"))
+        .collect();
+
+    parse_offers(&files)
 }
