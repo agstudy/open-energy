@@ -1,7 +1,6 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use bill_pricer::tariff::Tariff;
 use reqwest::{self, Client};
 use tokio::fs;
 use tokio::task::{JoinError, JoinSet};
@@ -150,22 +149,6 @@ pub async fn get_plan_detail(
         }
         Ok(v) => Ok(v.data),
     }
-}
-
-/// Parses an offer file on disk into a list of tariffs.
-/// # Errors
-///
-/// Returns [`LoadError`] if:
-/// - the file cannot be read ([`LoadError::Io`]),
-/// - the file's contents are not valid JSON for a [`PlanDetailResponse`]
-///   ([`LoadError::Json`]),
-/// - the embedded electricity contract is invalid
-///   ([`LoadError::ParseError`] wrapping [`ParseContractError`]).
-pub fn parse_offer_file(path: &Path) -> Result<Vec<Tariff>, LoadError> {
-    let body = std::fs::read_to_string(path)?;
-    let res = serde_json::from_str::<PlanDetailResponse>(&body)?;
-    let tariff = res.data.electricity_contract.build_tariff()?;
-    Ok(tariff)
 }
 
 /// Fetches the details for every plan across all retailers.

@@ -39,7 +39,7 @@ pub enum DailySupplyChargeType {
 }
 
 /// Specifies the type of rate applicable to this tariff period.
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone, Eq, Hash)]
 pub enum RateBlockUType {
     #[serde(rename = "singleRate")]
     SingleRates,

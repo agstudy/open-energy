@@ -112,6 +112,7 @@ dependencies = [
  "chrono-tz",
  "domain",
  "gen-meter",
+ "rayon",
  "reqwest",
  "rust_decimal",
  "rust_decimal_macros",
