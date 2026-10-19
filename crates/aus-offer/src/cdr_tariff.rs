@@ -183,9 +183,9 @@ impl PeriodTariff {
             RateBlockUType::SingleRates => self.single_rate_builder(),
             RateBlockUType::TimeOfUseRates => self.time_of_use_builder(),
             RateBlockUType::DemandCharges => {
-                return Err(PeriodTariffError::NotImplemented(
+                Err(PeriodTariffError::NotImplemented(
                     RateBlockUType::DemandCharges,
-                ));
+                ))
             }
         }
     }
