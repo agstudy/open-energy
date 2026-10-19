@@ -14,10 +14,13 @@ pub struct HourMinute {
     minute: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("invalid time {0:02}:{1:02} (hour must be 0-23, minute 0-59)")]
 pub struct InvalidHourMinute(u32, u32);
 
-impl std::error::Error for InvalidHourMinute {}
+#[derive(Debug, thiserror::Error)]
+#[error("invalid time {0} (hour must be 0-23, minute 0-59)")]
+pub struct InvalidStrHourMinute(String);
 
 impl TryFrom<HourMinuteRaw> for HourMinute {
     type Error = InvalidHourMinute;
@@ -26,30 +29,6 @@ impl TryFrom<HourMinuteRaw> for HourMinute {
         HourMinute::new(value.hour, value.minute)
     }
 }
-
-impl std::fmt::Display for InvalidHourMinute {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "invalid time {:02}:{:02} (hour must be 0-23, minute 0-59)",
-            self.0, self.1
-        )
-    }
-}
-#[derive(Debug)]
-pub struct InvalidStrHourMinute(String);
-
-impl std::fmt::Display for InvalidStrHourMinute {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "invalid time {} (hour must be 0-23, minute 0-59)",
-            self.0
-        )
-    }
-}
-
-impl std::error::Error for InvalidStrHourMinute {}
 
 impl TryFrom<&str> for HourMinute {
     type Error = InvalidStrHourMinute;
@@ -122,6 +101,16 @@ impl HourMinute {
     #[must_use]
     pub fn minute_of_day(&self) -> u32 {
         self.hour * 60 + self.minute
+    }
+
+    #[must_use]
+    pub fn hour(&self) -> u32 {
+        self.hour
+    }
+
+    #[must_use]
+    pub fn minute(&self) -> u32 {
+        self.minute
     }
 
     /// Builds a time of day from the number of minutes since midnight.

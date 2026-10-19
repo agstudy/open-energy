@@ -1,0 +1,20 @@
+[package]
+name = "aus-offer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+thiserror = { workspace = true }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+
+bill-pricer = { path = "../bill-pricer" }
+gen-meter = { path = "../gen-meter" }
+
+domain = { path = "../../domain" }
+tokio = { workspace = true }
+reqwest = { workspace = true }

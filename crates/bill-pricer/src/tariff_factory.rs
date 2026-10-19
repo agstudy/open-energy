@@ -50,14 +50,15 @@ impl TariffFactory {
     pub fn multiflat(
         blocks: &[(Decimal, Decimal)],
         supply_rate: Decimal,
-    ) -> Result<Tariff, TariffError> {
+        cons_period: Option<ConsumptionPeriod>,
+    ) -> Result<TariffBuilder, TariffError> {
         TariffBuilder::default()
+            .consumption_period(cons_period)
             .daily_supply(supply_rate)
             .rate_period(|s| {
                 s.rates(blocks)
                     .time_band(HourMinute::min(), HourMinute::max(), None)
-            })?
-            .build()
+            })
     }
 
     /// Builds a flat tariff with export tariff.
@@ -135,7 +136,7 @@ impl TariffFactory {
     ) -> Result<Tariff, TariffError> {
         let mut builder = TariffBuilder::default()
             .daily_supply(supply_rate)
-            .consumption_period(ConsumptionPeriod::Day);
+            .consumption_period(Some(ConsumptionPeriod::Day));
 
         // Off-peak runs from off_peak.start until peak begins (may cross midnight).
         for (start, end) in off_peak.start.split_midnight(peak.start.prev()) {

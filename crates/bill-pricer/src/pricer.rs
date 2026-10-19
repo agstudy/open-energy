@@ -55,6 +55,14 @@ fn reset_acc(r: &Reading, tariff: &Tariff, acc: &mut Acc) {
             ConsumptionPeriod::Month => acc.prev_date.is_none_or(|d| {
                 d.year() != r.local.date.year() || d.month() != r.local.date.month()
             }),
+            ConsumptionPeriod::BiMonthly => acc.prev_date.is_none_or(|d| {
+                d.year() != r.local.date.year()
+                    || (d.month() - 1) >> 1 != (r.local.date.month() - 1) >> 1
+            }),
+            ConsumptionPeriod::Quarterly => acc.prev_date.is_none_or(|d| {
+                d.year() != r.local.date.year()
+                    || (d.month() - 1) >> 1 != (r.local.date.month() - 1) >> 1
+            }),
         };
         if reset {
             acc.import_kwh = Decimal::ZERO;
@@ -404,7 +412,7 @@ mod tests {
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
             .unwrap()
-            .consumption_period(ConsumptionPeriod::Day)
+            .consumption_period(Some(ConsumptionPeriod::Day))
             .build()
             .unwrap();
 
@@ -437,7 +445,7 @@ mod tests {
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
             .unwrap()
-            .consumption_period(ConsumptionPeriod::Month)
+            .consumption_period(Some(ConsumptionPeriod::Month))
             .build()
             .unwrap();
 
@@ -506,7 +514,7 @@ mod tests {
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
             .unwrap()
-            .consumption_period(ConsumptionPeriod::Day)
+            .consumption_period(Some(ConsumptionPeriod::Day))
             .build()
             .unwrap();
 
@@ -584,7 +592,7 @@ mod tests {
 
         let multiflat_tariff = TariffBuilder::default()
             .daily_supply(dec!(1.0))
-            .consumption_period(ConsumptionPeriod::Day)
+            .consumption_period(Some(ConsumptionPeriod::Day))
             .rate_period(|s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])
                     .time_band(HourMinute::min(), HourMinute::max(), None)

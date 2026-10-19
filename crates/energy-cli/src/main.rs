@@ -1,5 +1,8 @@
 use anyhow::Context;
 use anyhow::Result as AnyResult;
+use aus_offer::loader::LoadError;
+use aus_offer::loader::get_all_plans_details;
+use aus_offer::loader::parse_offer_file;
 use bill_pricer::pricer::PricingResult;
 use bill_pricer::pricer::price;
 use bill_pricer::tariff::{Tariff, TariffRaw};
@@ -10,6 +13,7 @@ use domain::HourMinute;
 use domain::meter::{MeterMeasure, PricingInput, merge_import_export};
 use gen_meter::generator::{GeneratorConfig, generate_smart_meter};
 use meter_parser::Nem12Parser;
+use rayon::prelude::*;
 use rust_decimal::Decimal;
 use std::fs::File;
 use std::io::BufReader;
@@ -49,6 +53,15 @@ enum TariffCmd {
     FromFile {
         #[arg(long = "tariff-file")]
         file: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum QueryCmd {
+    Plans,
+    Offers {
+        #[arg(long)]
+        dir: PathBuf,
     },
 }
 
@@ -111,7 +124,8 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
     },
-
+    /// Price a tariff (commoan or parsed from json template)
+    /// price a real smart meter or a generated meter
     Price {
         #[command(flatten)]
         source: SourceArgs,
@@ -121,6 +135,11 @@ enum Commands {
 
         #[arg(long)]
         tz: String,
+    },
+    /// scrape and manipulate cdr data
+    Cdr {
+        #[command(subcommand)]
+        query: QueryCmd,
     },
 }
 
@@ -168,7 +187,9 @@ impl TryFrom<TariffCmd> for Tariff {
         }
     }
 }
-fn main() -> AnyResult<()> {
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
@@ -179,8 +200,47 @@ fn main() -> AnyResult<()> {
             let bill = run_price(source, tariff, &tz)?;
             println!("\n{bill}");
         }
+        Commands::Cdr { query } => match query {
+            QueryCmd::Plans => {
+                let client = reqwest::Client::new();
+                let plans = get_all_plans_details(&client).await?;
+                for (i, (k, v)) in plans.iter().enumerate() {
+                    println!("{}:{}:{}", k, v.brand, i);
+                }
+            }
+            QueryCmd::Offers { dir } => {
+                for tariff in parse_offers_dir(&dir) {
+                    println!("{}", tariff.supply_rate());
+                }
+            }
+        },
     }
     Ok(())
+}
+
+fn parse_offers_dir(dir: &Path) -> Vec<Tariff> {
+    let files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .unwrap()
+        .filter_map(std::result::Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "json"))
+        .collect();
+
+    let results: Vec<(PathBuf, Result<Vec<Tariff>, LoadError>)> = files
+        .par_iter()
+        .map(|p| (p.clone(), parse_offer_file(p)))
+        .collect();
+
+    // Split successes and failures
+    let mut tariffs = Vec::new();
+    for (path, r) in results {
+        match r {
+            Ok(ts) => tariffs.extend(ts),
+            Err(e) => eprintln!("skipping {}: {e}", path.display()),
+        }
+    }
+
+    tariffs
 }
 
 // --- Command Handlers ---
