@@ -322,7 +322,6 @@ mod tests {
         assert!(!tariff.export_tariff().is_empty());
     }
 
-
     #[test]
     fn parses_solar_multiflat() {
         let tariffs = get_tariffs(include_str!("../data/1ST1122747MBE1@EME.json"));

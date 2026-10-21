@@ -132,6 +132,13 @@ impl PlanContract {
         })
     }
 
+    /// Builds one import [`Tariff`] per tariff period described by the contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseContractError::ParseTariff`] if any tariff period fails to
+    /// parse or its bands fail validation (gap, overlap, tier order, or an
+    /// invalid time band).
     pub fn build_import_tariffs(&self) -> Result<Vec<Tariff>, ParseContractError> {
         let builders = self
             .tariff_period
@@ -147,6 +154,14 @@ impl PlanContract {
         Ok(tariffs)
     }
 
+    /// Builds one export [`Tariff`] per `(scheme, payer)` pair, combining all
+    /// feed-in entries that share the same scheme, payer, and tariff type.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseContractError::ParseTariff`] if a solar feed-in entry is
+    /// missing its `singleTariff` or `timeVaryingTariffs` payload, or if the
+    /// combined bands fail validation.
     pub fn build_export_tariffs(
         &self,
     ) -> Result<HashMap<(SolarScheme, PayerType), Tariff>, ParseContractError> {
@@ -225,13 +240,16 @@ impl PlanContract {
         builder: &mut TariffBuilder,
     ) -> Result<(), ParseContractError> {
         let mut rates = Vec::new();
-        
+
         for feed in feeds {
             rates.extend(&feed.get_single()?.rates);
         }
 
         builder
-            .export_rate_period(|s| s.rates(&block_rates(rates)).time_band(START_OF_DAY, END_OF_DAY, None))
+            .export_rate_period(|s| {
+                s.rates(&block_rates(rates))
+                    .time_band(START_OF_DAY, END_OF_DAY, None)
+            })
             .map_err(PeriodTariffError::from)?;
 
         Ok(())

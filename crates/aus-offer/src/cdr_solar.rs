@@ -45,12 +45,22 @@ impl SolarTariff {
         self.scheme == SolarScheme::Premium || self.payer_type == PayerType::Government
     }
 
+    /// Returns the single-rate payload for this feed-in entry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PeriodTariffError::MissingField`] if `singleTariff` is absent.
     pub fn get_single(&self) -> Result<&SingleRates, PeriodTariffError> {
         self.single_rate
             .as_ref()
             .ok_or(PeriodTariffError::MissingField("singleTariff"))
     }
 
+    /// Returns the time-of-use payload for this feed-in entry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PeriodTariffError::MissingField`] if `timeVaryingTariffs` is absent.
     pub fn get_tou(&self) -> Result<&Vec<TimeOfUseRates>, PeriodTariffError> {
         self.time_of_use_rates
             .as_ref()

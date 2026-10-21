@@ -228,7 +228,6 @@ mod tests {
         let record = csv::StringRecord::from(raw_line.split(',').collect::<Vec<_>>());
 
         let result = parse_200_to_state(&record);
-        println!("{result:?}");
 
         assert!(matches!(result, Err(ParserError::InvalidUnitOfMeasure(_))));
     }
