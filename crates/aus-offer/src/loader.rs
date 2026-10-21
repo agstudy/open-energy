@@ -305,7 +305,10 @@ mod tests {
         let tariff = tariffs
             .get(&(SolarScheme::Current, PayerType::Retailer))
             .unwrap();
-        assert!(!tariff.export_tariff().is_empty());
+        assert!(
+            !tariff.export_tariff().is_empty(),
+            "expected an export tariff for this plan"
+        );
     }
     #[test]
     fn parses_solar_tou_band_gap_00() {
@@ -335,6 +338,10 @@ mod tests {
         let tariff = tariffs
             .get(&(SolarScheme::Other, PayerType::Retailer))
             .unwrap();
-        assert!(!tariff.export_tariff().is_empty());
+
+        assert!(
+            !tariff.export_tariff().is_empty(),
+            "expected an export tariff for this plan"
+        );
     }
 }
