@@ -20,31 +20,36 @@ fn generate_tariff() -> Tariff {
     let hm_offpeak_2100 = HourMinute::new_unchecked(21, 0);
     let hm_offpeak_2359 = HourMinute::new_unchecked(23, 59);
 
-    TariffBuilder::default()
+    let mut builder = TariffBuilder::default()
         .daily_supply(dec!(1.0))
-        .consumption_period(Some(ConsumptionPeriod::Day))
+        .consumption_period(Some(ConsumptionPeriod::Day));
+    builder
         .rate_period(|s| {
             s.rates(&[(dec!(0.2), dec!(0)), (dec!(0.4), dec!(10))])
                 .time_band(midnight, hm_off_peak_1759, None)
         })
-        .unwrap()
+        .unwrap();
+
+    builder
         .rate_period(|s| {
             s.rates(&[(dec!(0.4), dec!(0)), (dec!(0.6), dec!(10))])
                 .time_band(hm_peak_1800, hm_peak_2059, None)
         })
-        .unwrap()
+        .unwrap();
+    builder
         .rate_period(|s| {
             s.rates(&[(dec!(0.2), dec!(0)), (dec!(0.4), dec!(10))])
                 .time_band(hm_offpeak_2100, hm_offpeak_2359, None)
         })
-        .unwrap()
+        .unwrap();
+
+    builder
         .export_rate_period(|s| {
             s.rates(&[(dec!(0.05), dec!(0))])
                 .time_band(HourMinute::min(), HourMinute::max(), None)
         })
-        .unwrap()
-        .build()
-        .unwrap()
+        .unwrap();
+    builder.build().unwrap()
 }
 
 fn setup(frequency: i64) -> (Tariff, PricingInput) {

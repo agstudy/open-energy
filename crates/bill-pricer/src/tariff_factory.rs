@@ -28,16 +28,12 @@ impl TariffFactory {
     ///
     ///
     pub fn flat(flat_rate: Decimal, supply_rate: Decimal) -> Result<Tariff, TariffError> {
-        TariffBuilder::default()
-            .daily_supply(supply_rate)
-            .rate_period(|s| {
-                s.rates(&[(flat_rate, dec!(0))]).time_band(
-                    HourMinute::min(),
-                    HourMinute::max(),
-                    None,
-                )
-            })?
-            .build()
+        let mut builder = TariffBuilder::default().daily_supply(supply_rate);
+        builder.rate_period(|s| {
+            s.rates(&[(flat_rate, dec!(0))])
+                .time_band(HourMinute::min(), HourMinute::max(), None)
+        })?;
+        builder.build()
     }
 
     /// Builds a multifalt tariff with the given flat rate and daily supply rate.
@@ -52,13 +48,15 @@ impl TariffFactory {
         supply_rate: Decimal,
         cons_period: Option<ConsumptionPeriod>,
     ) -> Result<TariffBuilder, TariffError> {
-        TariffBuilder::default()
+        let mut builder = TariffBuilder::default()
             .consumption_period(cons_period)
-            .daily_supply(supply_rate)
-            .rate_period(|s| {
-                s.rates(blocks)
-                    .time_band(HourMinute::min(), HourMinute::max(), None)
-            })
+            .daily_supply(supply_rate);
+
+        builder.rate_period(|s| {
+            s.rates(blocks)
+                .time_band(HourMinute::min(), HourMinute::max(), None)
+        })?;
+        Ok(builder)
     }
 
     /// Builds a flat tariff with export tariff.
@@ -73,23 +71,16 @@ impl TariffFactory {
         supply_rate: Decimal,
         export_rate: Decimal,
     ) -> Result<Tariff, TariffError> {
-        TariffBuilder::default()
-            .daily_supply(supply_rate)
-            .rate_period(|s| {
-                s.rates(&[(flat_rate, dec!(0))]).time_band(
-                    HourMinute::min(),
-                    HourMinute::max(),
-                    None,
-                )
-            })?
-            .export_rate_period(|s| {
-                s.rates(&[(export_rate, dec!(0))]).time_band(
-                    HourMinute::min(),
-                    HourMinute::max(),
-                    None,
-                )
-            })?
-            .build()
+        let mut builder = TariffBuilder::default().daily_supply(supply_rate);
+        builder.rate_period(|s| {
+            s.rates(&[(flat_rate, dec!(0))])
+                .time_band(HourMinute::min(), HourMinute::max(), None)
+        })?;
+        builder.export_rate_period(|s| {
+            s.rates(&[(export_rate, dec!(0))])
+                .time_band(HourMinute::min(), HourMinute::max(), None)
+        })?;
+        builder.build()
     }
 
     /// Builds a time-of-use tariff with the given peak and off-peak windows
@@ -108,14 +99,14 @@ impl TariffFactory {
 
         // Off-peak runs from off_peak.start until peak begins (may cross midnight).
         for (start, end) in off_peak.start.split_midnight(peak.start.prev()) {
-            builder = builder.rate_period(|s| {
+            builder.rate_period(|s| {
                 s.rates(&[(off_peak.rate, dec!(0))])
                     .time_band(start, end, None)
             })?;
         }
         // Peak runs from peak.start until off-peak resumes (may cross midnight).
         for (start, end) in peak.start.split_midnight(off_peak.start.prev()) {
-            builder = builder
+            builder
                 .rate_period(|s| s.rates(&[(peak.rate, dec!(0))]).time_band(start, end, None))?;
         }
 
@@ -140,12 +131,11 @@ impl TariffFactory {
 
         // Off-peak runs from off_peak.start until peak begins (may cross midnight).
         for (start, end) in off_peak.start.split_midnight(peak.start.prev()) {
-            builder =
-                builder.rate_period(|s| s.rates(&off_peak.rates).time_band(start, end, None))?;
+            builder.rate_period(|s| s.rates(&off_peak.rates).time_band(start, end, None))?;
         }
         // Peak runs from peak.start until off-peak resumes (may cross midnight).
         for (start, end) in peak.start.split_midnight(off_peak.start.prev()) {
-            builder = builder.rate_period(|s| s.rates(&peak.rates).time_band(start, end, None))?;
+            builder.rate_period(|s| s.rates(&peak.rates).time_band(start, end, None))?;
         }
 
         builder.build()

@@ -10,8 +10,16 @@ use rayon::prelude::*;
 pub enum UnsupportedReason {
     #[error("pricing model")]
     Pricing(PricingModel),
-    #[error("")]
+    #[error("Type not implemented")]
     BlockType(RateBlockUType),
+    #[error("Solar variante (multi choices) not supported")]
+    SolarMultiOptions,
+    #[error("Solar model not supported")]
+    SolarMultiFlatTou,
+    #[error("model gap tariff malformed")]
+    SolarGap,
+    #[error("other solar model like seasonal unsupported")]
+    Solar,
 }
 
 // --errors
@@ -54,10 +62,9 @@ pub fn parse_offer_file(path: &Path) -> FileOutcome {
         Ok(b) => b,
         Err(e) => return FileOutcome::Failed(FailureReason::Json(e)),
     };
-    let tariffs = res.data.electricity_contract.build_tariff();
-    let pricing_model = res.data.electricity_contract.pricing_model;
-    match tariffs {
-        Ok(tariffs) => FileOutcome::Converted(pricing_model, tariffs.len()),
+    let pricing_model = res.data.electricity_contract.pricing_model.clone();
+    match res.data.electricity_contract.build_tariff() {
+        Ok(pt) => FileOutcome::Converted(pricing_model, pt.import.len()),
         Err(e) => match e {
             ParseContractError::NotImplemented(p) => {
                 FileOutcome::Unsupported(UnsupportedReason::Pricing(p))
@@ -66,7 +73,20 @@ pub fn parse_offer_file(path: &Path) -> FileOutcome {
                 FileOutcome::Unsupported(UnsupportedReason::BlockType(bt))
             }
             ParseContractError::ParseTariff(other) => {
+                eprintln!("{}: {other}", path.display());
                 FileOutcome::Failed(FailureReason::Tariff(other))
+            }
+            ParseContractError::UnsupportedMultipleOptions => {
+                FileOutcome::Unsupported(UnsupportedReason::SolarMultiOptions)
+            }
+            ParseContractError::UnsupportedTouMultiflat => {
+                FileOutcome::Unsupported(UnsupportedReason::SolarMultiFlatTou)
+            }
+            ParseContractError::UnsupportedGap => {
+                FileOutcome::Unsupported(UnsupportedReason::SolarGap)
+            }
+            ParseContractError::UnsupportedSolar => {
+                FileOutcome::Unsupported(UnsupportedReason::Solar)
             }
         },
     }
