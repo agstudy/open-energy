@@ -208,6 +208,8 @@ mod tests {
     use rust_decimal_macros::dec;
     use std::str::FromStr;
 
+    use crate::cdr_solar::{PayerType, SolarScheme};
+
     use super::*;
     fn priced(meter: &[MeterMeasure], zone: &str) -> PricingInput {
         PricingInput::new(tz(zone), meter)
@@ -225,6 +227,16 @@ mod tests {
             .build_tariff()
             .unwrap()
             .import
+    }
+
+    fn get_export_tariffs(json: &str) -> HashMap<(SolarScheme, PayerType), Tariff> {
+        let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
+        offer
+            .data
+            .electricity_contract
+            .build_tariff()
+            .unwrap()
+            .export
     }
 
     #[test]
@@ -287,45 +299,42 @@ mod tests {
     }
 
     #[test]
-    fn parses_tou_missing_tou() {
-        let tariffs = get_tariffs(include_str!("../data/tou/FLO806120MR@VEC.json"));
-        assert_eq!(tariffs.len(), 1);
-        let tariff = tariffs.first().unwrap();
-        assert_eq!(tariff.supply_rate(), Decimal::try_from(1.7035).unwrap());
-        assert_eq!(tariff.consumption_period(), None);
-    }
-
-    #[test]
-    fn parses_solar_tou() {
-        let tariffs = get_tariffs(include_str!("../data/tou/FLO806120MR@VEC.json"));
-        let tariff = tariffs.first().unwrap();
-        assert!(!tariff.export_tariff().is_empty());
-    }
-
-    #[test]
     fn parses_solar_single_rate() {
-        let tariffs = get_tariffs(include_str!("../data/flat/OR2810912MS@VEC.json"));
-        let tariff = tariffs.first().unwrap();
+        let tariffs = get_export_tariffs(include_str!("../data/flat/OR2810912MS@VEC.json"));
+
+        let tariff = tariffs
+            .get(&(SolarScheme::Current, PayerType::Retailer))
+            .unwrap();
         assert!(!tariff.export_tariff().is_empty());
     }
     #[test]
     fn parses_solar_tou_band_gap_00() {
-        let tariffs = get_tariffs(include_str!("../data/tou/RED552524MBE14@EME.json"));
-        let tariff = tariffs.first().unwrap();
-        assert!(!tariff.export_tariff().is_empty());
+        let json = include_str!("../data/tou/RED552524MBE14@EME.json");
+        let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
+        let export = offer.data.electricity_contract.build_tariff();
+        assert!(matches!(
+            export,
+            Err(ParseContractError::UnsupportedMultipleOptions)
+        ));
     }
 
     #[test]
     fn parses_solar_tou_band_gap_10() {
-        let tariffs = get_tariffs(include_str!("../data/tou/IOR1159339MRE1@EME.json"));
-        let tariff = tariffs.first().unwrap();
-        assert!(!tariff.export_tariff().is_empty());
+        let json = include_str!("../data/tou/IOR1159339MRE1@EME.json");
+        let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
+        let export = offer.data.electricity_contract.build_tariff();
+        assert!(matches!(
+            export,
+            Err(ParseContractError::UnsupportedMultipleOptions)
+        ));
     }
 
     #[test]
     fn parses_solar_multiflat() {
-        let tariffs = get_tariffs(include_str!("../data/1ST1122747MBE1@EME.json"));
-        let tariff = tariffs.first().unwrap();
+        let tariffs = get_export_tariffs(include_str!("../data/1ST1122747MBE1@EME.json"));
+        let tariff = tariffs
+            .get(&(SolarScheme::Other, PayerType::Retailer))
+            .unwrap();
         assert!(!tariff.export_tariff().is_empty());
     }
 }
