@@ -12,7 +12,13 @@ pub enum UnsupportedReason {
     Pricing(PricingModel),
     #[error("Type not implemented")]
     BlockType(RateBlockUType),
+    #[error("Solar variante (multi choices) not supported")]
+    SolarMultiOptions,
     #[error("Solar model not supported")]
+    SolarMultiFlatTou,
+    #[error("model gap tariff malformed")]
+    SolarGap,
+    #[error("other solar model like seasonal unsupported")]
     Solar,
 }
 
@@ -71,7 +77,15 @@ pub fn parse_offer_file(path: &Path) -> FileOutcome {
                 FileOutcome::Failed(FailureReason::Tariff(other))
             }
             ParseContractError::UnsupportedMultipleOptions => {
-                eprintln!("unsuported multiple options {}", path.display());
+                FileOutcome::Unsupported(UnsupportedReason::SolarMultiOptions)
+            }
+            ParseContractError::UnsupportedTouMultiflat => {
+                FileOutcome::Unsupported(UnsupportedReason::SolarMultiFlatTou)
+            }
+            ParseContractError::UnsupportedGap => {
+                FileOutcome::Unsupported(UnsupportedReason::SolarGap)
+            }
+            ParseContractError::UnsupportedSolar => {
                 FileOutcome::Unsupported(UnsupportedReason::Solar)
             }
         },

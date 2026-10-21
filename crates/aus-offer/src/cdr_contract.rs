@@ -5,6 +5,7 @@ use std::{
 
 use bill_pricer::tariff::{Tariff, TariffBuilder, TariffError};
 use domain::hour_minute::{END_OF_DAY, START_OF_DAY};
+use rust_decimal::Decimal;
 use serde::Deserialize;
 
 use crate::{
@@ -106,6 +107,15 @@ pub enum ParseContractError {
 
     #[error("solar multioptions is unsupported")]
     UnsupportedMultipleOptions,
+
+    #[error("solar tou multiflat is unsupported")]
+    UnsupportedTouMultiflat,
+
+    #[error("solar gap: tariff malformed")]
+    UnsupportedGap,
+
+    #[error("solar unsupported")]
+    UnsupportedSolar,
 }
 
 pub struct PlanTariff {
@@ -191,9 +201,7 @@ impl PlanContract {
                         /* all feeds here are TimeOfUseTariff */
 
                         let starts = Self::get_all_starts(&feeds);
-                        for feed in &feeds {
-                            Self::build_solar_tou_tariff(feed, &mut builder, &starts)?;
-                        }
+                        Self::build_solar_tou_tariff(&feeds, &mut builder, &starts)?;
                     }
                 }
 
@@ -204,6 +212,9 @@ impl PlanContract {
                     Err(TariffError::Overlap(..)) => {
                         return Err(ParseContractError::UnsupportedMultipleOptions);
                     }
+                    Err(TariffError::Gap(..)) => {
+                        return Err(ParseContractError::UnsupportedGap);
+                    }
                     Err(e) => return Err(PeriodTariffError::from(e).into()),
                 }
             }
@@ -212,23 +223,26 @@ impl PlanContract {
     }
 
     fn build_solar_tou_tariff(
-        feed: &SolarTariff,
+        feeds: &[&SolarTariff],
         builder: &mut TariffBuilder,
         starts: &HashSet<String>,
     ) -> Result<(), ParseContractError> {
-        let tou_rates = feed
-            .time_of_use_rates
-            .as_ref()
-            .ok_or(PeriodTariffError::MissingField("timeVaryingTariffs"))?;
+        // merging aff feeds for real tou  cases
+        for feed in feeds {
+            let tou_rates = feed.get_tou()?;
+            for tou_period in tou_rates {
+                let blocks = block_rates(&tou_period.rates);
+                for time_band in &tou_period.time_of_use {
+                    for tb in time_band
+                        .to_time_band(starts)
+                        .map_err(PeriodTariffError::from)?
+                    {
+                        if blocks.iter().any(|(_, v)| *v > Decimal::ZERO) {
+                            return Err(ParseContractError::UnsupportedTouMultiflat);
+                        }
 
-        for tou_period in tou_rates {
-            let blocks = block_rates(&tou_period.rates);
-            for time_band in &tou_period.time_of_use {
-                for tb in time_band
-                    .to_time_band(starts)
-                    .map_err(PeriodTariffError::from)?
-                {
-                    builder.add_export_rate_period(&blocks, tb);
+                        builder.add_export_rate_period(&blocks, tb);
+                    }
                 }
             }
         }
@@ -241,8 +255,18 @@ impl PlanContract {
     ) -> Result<(), ParseContractError> {
         let mut rates = Vec::new();
 
+        // merging only rates for multiflat cases
         for feed in feeds {
             rates.extend(&feed.get_single()?.rates);
+        }
+
+        if !rates.is_empty()
+            && rates.len() > 1
+            && rates
+                .iter()
+                .all(|v| v.volume.unwrap_or(Decimal::ZERO) == Decimal::ZERO)
+        {
+            return Err(ParseContractError::UnsupportedSolar);
         }
 
         builder
