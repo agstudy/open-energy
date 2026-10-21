@@ -7,7 +7,10 @@ use serde::Deserialize;
 
 use crate::{
     cdr_demand::DemandTariff,
-    cdr_domain::{BuildTimeBandError, DaysTimeBand, RateDto, TimeZone},
+    cdr_domain::{
+        BuildTimeBandError, ResetPeriod, SingleRates, TimeOfUseRates, TimeZone, all_starts,
+        block_rates,
+    },
 };
 
 /// Type of charge. Assumed to be `OTHER` if absent.
@@ -49,50 +52,6 @@ pub enum RateBlockUType {
     DemandCharges,
 }
 
-/// `SingleRates` : Object representing a flat/multiflat(with reset period)
-#[derive(Debug, Deserialize)]
-pub struct SingleRates {
-    #[serde(rename = "rates")]
-    pub rates: Vec<RateDto>,
-    #[serde(rename = "period")]
-    pub reset_period: Option<ResetPeriod>,
-}
-
-/// The type of usage that the rate applies to.
-#[derive(Debug, Deserialize)]
-pub enum ResetPeriod {
-    #[serde(rename = "P1D", alias = "day")]
-    Daily,
-
-    #[serde(rename = "P1M")]
-    Monthly,
-
-    #[serde(rename = "P2M")]
-    BiMonthly,
-
-    #[serde(rename = "P3M")]
-    Quarterly,
-
-    #[serde(rename = "P6M")]
-    HalfYearly,
-
-    #[serde(rename = "P1Y")]
-    Yearly,
-
-    #[serde(other)]
-    Other,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TimeOfUseRates {
-    pub rates: Vec<RateDto>,
-    #[serde(alias = "timeVariations")]
-    pub time_of_use: Vec<DaysTimeBand>,
-    #[serde(rename = "period")]
-    pub reset_period: Option<ResetPeriod>,
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PeriodTariff {
@@ -109,40 +68,6 @@ pub struct PeriodTariff {
     pub single_rate: Option<SingleRates>,
     pub time_of_use_rates: Option<Vec<TimeOfUseRates>>,
     pub demand_charges: Option<Vec<DemandTariff>>,
-}
-
-/// --- solar
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PlanSolarTariff {
-    pub scheme: SolarScheme,
-    pub tariff_u_type: TariffUType,
-    pub single_rates: Option<SingleRates>,
-    #[serde(rename = "timeVaryingTariffs")]
-    pub time_of_use_rates: Option<Vec<TimeOfUseRates>>,
-}
-
-/// The applicable scheme.
-#[derive(Debug, Deserialize)]
-pub enum SolarScheme {
-    #[serde(rename = "PREMIUM")]
-    Premium,
-    #[serde(rename = "CURRENT")]
-    Current,
-    #[serde(rename = "VARIABLE")]
-    Variable,
-    #[serde(rename = "OTHER")]
-    Other,
-}
-
-/// Reference to the applicable tariff structure.
-#[derive(Debug, Deserialize)]
-pub enum TariffUType {
-    #[serde(rename = "singleTariff")]
-    SingleTariff,
-    #[serde(rename = "timeVaryingTariffs")]
-    TimeOfUseTariff,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -212,7 +137,7 @@ impl PeriodTariff {
             .as_ref()
             .ok_or(PeriodTariffError::MissingField("singleRate"))?;
 
-        let rates = Self::block_rates(&single.rates);
+        let rates = block_rates(&single.rates);
 
         let consumption_period = Self::get_consumption_period(&rates, single.reset_period.as_ref());
 
@@ -228,16 +153,19 @@ impl PeriodTariff {
     /// Returns [`PeriodTariffError`] if the tariff's time bands are invalid,
     /// overlapping, or leave gaps in coverage.
     pub fn time_of_use_builder(&self) -> Result<TariffBuilder, PeriodTariffError> {
-        let tou_rates = self
+        let tou_rates: Vec<&TimeOfUseRates> = self
             .time_of_use_rates
             .as_ref()
-            .ok_or(PeriodTariffError::MissingField("timeOfUseRates"))?;
+            .ok_or(PeriodTariffError::MissingField("timeOfUseRates"))?
+            .iter()
+            .collect();
 
         let mut builder = TariffBuilder::default();
+        let starts = all_starts(&tou_rates);
         for tou_period in tou_rates {
-            let blocks = Self::block_rates(&tou_period.rates);
+            let blocks = block_rates(&tou_period.rates);
             for time_band in &tou_period.time_of_use {
-                for tb in time_band.to_time_band()? {
+                for tb in time_band.to_time_band(&starts)? {
                     builder = builder.add_rate_period(&blocks, tb);
                 }
             }
@@ -252,18 +180,6 @@ impl PeriodTariff {
         Ok(builder)
     }
 
-    /// create rates blocks with lower limit
-    fn block_rates(rates: &[RateDto]) -> Vec<(Decimal, Decimal)> {
-        let mut blocks = Vec::new();
-        let mut prev_upper = Decimal::ZERO;
-        for rate in rates {
-            blocks.push((rate.unit_price, prev_upper));
-            if let Some(v) = rate.volume {
-                prev_upper = v;
-            }
-        }
-        blocks
-    }
     /// helper to parse consumption period
     fn get_consumption_period(
         rates: &[(Decimal, Decimal)],

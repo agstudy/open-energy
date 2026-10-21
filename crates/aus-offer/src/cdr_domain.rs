@@ -1,5 +1,10 @@
+use std::collections::HashSet;
+
 use bill_pricer::{InvalidTimeBand, TimeBand, WeekDays};
-use domain::{HourMinute, hour_minute::InvalidStrHourMinute};
+use domain::{
+    HourMinute,
+    hour_minute::{InvalidStrHourMinute, START_OF_DAY},
+};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
@@ -133,10 +138,13 @@ impl DaysTimeBand {
     /// - [`BuildTimeBandError::InvalidTimeBand`] if `start` is after `end`
     ///   after normalisation, or the band is otherwise rejected by
     ///   [`TimeBand::new`].
-    pub fn to_time_band(&self) -> Result<Vec<TimeBand>, BuildTimeBandError> {
+    pub fn to_time_band(
+        &self,
+        all_starts: &HashSet<String>,
+    ) -> Result<Vec<TimeBand>, BuildTimeBandError> {
         let start: HourMinute = self.start_time.as_str().try_into()?;
         let mut end: HourMinute = self.end_time.as_str().try_into()?;
-        if end.minute() == 0 {
+        if (end == START_OF_DAY && start != START_OF_DAY) || all_starts.contains(&self.end_time) {
             end = end.prev();
         }
         let days_of_week = Some(days_to_weekdays(&self.days)?);
@@ -164,4 +172,88 @@ pub struct GeographyDto {
     pub included_postcodes: Option<Vec<String>>,
     /// Array of distributors for the plan. Must have at least one entry.
     pub distributors: Vec<String>,
+}
+
+/// `SingleRates` : Object representing a flat/multiflat(with reset period)
+#[derive(Debug, Deserialize)]
+pub struct SingleRates {
+    #[serde(rename = "rates")]
+    pub rates: Vec<RateDto>,
+    #[serde(rename = "period")]
+    pub reset_period: Option<ResetPeriod>,
+}
+
+/// The type of usage that the rate applies to.
+#[derive(Debug, Deserialize)]
+pub enum ResetPeriod {
+    #[serde(rename = "P1D", alias = "day")]
+    Daily,
+
+    #[serde(rename = "P1M")]
+    Monthly,
+
+    #[serde(rename = "P2M")]
+    BiMonthly,
+
+    #[serde(rename = "P3M")]
+    Quarterly,
+
+    #[serde(rename = "P6M")]
+    HalfYearly,
+
+    #[serde(rename = "P1Y")]
+    Yearly,
+
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimeOfUseRates {
+    pub rates: Vec<RateDto>,
+    #[serde(alias = "timeVariations")]
+    pub time_of_use: Vec<DaysTimeBand>,
+    #[serde(rename = "period")]
+    pub reset_period: Option<ResetPeriod>,
+}
+
+/// Reference to the applicable tariff structure.
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TariffUType {
+    #[serde(rename = "singleTariff")]
+    SingleTariff,
+    #[serde(rename = "timeVaryingTariffs")]
+    TimeOfUseTariff,
+}
+
+/// Converts CDR `(rate, volume)` blocks into blocks with a lower limit.
+///
+/// `volume` is treated as a cumulative upper limit, so each block's lower
+/// limit is the previous block's `volume` (0 for the first).
+///
+/// `[(r1, v), (r2, None)]` becomes `[(r1, 0), (r2, v)]`.
+///
+/// Accepts anything that yields `&RateDto`: `&Vec`, slices, `Vec<&RateDto>`,
+/// or an iterator chain.
+#[must_use]
+pub fn block_rates<'a>(rates: impl IntoIterator<Item = &'a RateDto>) -> Vec<(Decimal, Decimal)> {
+    let mut blocks = Vec::new();
+    let mut prev_upper = Decimal::ZERO;
+    for rate in rates {
+        blocks.push((rate.unit_price, prev_upper));
+        prev_upper = rate.volume.unwrap_or(Decimal::ZERO);
+    }
+    blocks
+}
+
+#[must_use]
+pub fn all_starts(bands: &[&TimeOfUseRates]) -> HashSet<String> {
+    let mut res = HashSet::new();
+    for tou in bands {
+        for x in &tou.time_of_use {
+            res.insert(x.start_time.clone());
+        }
+    }
+    res
 }

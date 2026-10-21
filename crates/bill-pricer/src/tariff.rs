@@ -206,8 +206,10 @@ impl Tariff {
     /// if tier thresholds are not strictly increasing from zero, or
     /// [`TariffError::EmptyRates`] if a period has no rate blocks.
     pub fn validate(&self) -> Result<(), TariffError> {
-        for (day, rps) in group_per_weekday(&self.import) {
-            validate_tariff(day, &rps)?;
+        if !self.import.is_empty() {
+            for (day, rps) in group_per_weekday(&self.import) {
+                validate_tariff(day, &rps)?;
+            }
         }
         if let Some(export) = &self.export {
             for (day, rps) in group_per_weekday(export) {
@@ -275,7 +277,6 @@ fn group_per_weekday(rps: &[RatePeriod]) -> [(Weekday, Vec<&RatePeriod>); 7] {
 /// ```
 fn validate_tariff(day: Weekday, rps: &[&RatePeriod]) -> Result<(), TariffError> {
     let hm = |val| from_minute_of_day_unchecked(val);
-
     let mut cursor: u32 = 0;
     for rp in rps {
         check_tier_order(&rp.rates)?;
@@ -408,7 +409,7 @@ impl TariffBuilder {
     /// # Errors
     ///
     /// Returns [`TariffError`] if `f` returns an error.
-    pub fn rate_period<F>(mut self, f: F) -> Result<Self, TariffError>
+    pub fn rate_period<F>(&mut self, f: F) -> Result<&mut Self, TariffError>
     where
         F: FnOnce(RatePeriodBuilder) -> Result<RatePeriodBuilder, TariffError>,
     {
@@ -431,6 +432,22 @@ impl TariffBuilder {
         self
     }
 
+    /// Adds an impoexport rt rate period using direct `RatePeriod` parameters
+    ///
+    /// Overlap and coverage are not checked here; they are validated by
+    /// [`TariffBuilder::build`].
+    pub fn add_export_rate_period(
+        &mut self,
+        rates: &[(Decimal, Decimal)],
+        time_band: TimeBand,
+    ) -> &mut Self {
+        self.export.get_or_insert_with(Vec::new).push(RatePeriod {
+            rates: rates_mapper(rates),
+            time_band,
+        });
+        self
+    }
+
     /// Adds an export (feed-in) rate period using the given builder closure.
     ///
     /// Overlap and coverage are not checked here; they are validated by
@@ -439,7 +456,7 @@ impl TariffBuilder {
     /// # Errors
     ///
     /// Returns [`TariffError`] if `f` returns an error.
-    pub fn export_rate_period<F>(mut self, f: F) -> Result<Self, TariffError>
+    pub fn export_rate_period<F>(&mut self, f: F) -> Result<&mut Self, TariffError>
     where
         F: FnOnce(RatePeriodBuilder) -> Result<RatePeriodBuilder, TariffError>,
     {
@@ -468,7 +485,6 @@ impl TariffBuilder {
             discount: self.discount,
             cons_period: self.cons_period,
         };
-
         tariff.validate()?;
         Ok(tariff)
     }
@@ -514,15 +530,14 @@ mod tests {
 
     #[test]
     fn test_multi_tiers_success() {
-        let tariff = TariffBuilder::default()
-            .daily_supply(dec!(0.1))
+        let mut builder = TariffBuilder::default().daily_supply(dec!(0.1));
+        builder
             .rate_period(|s| {
                 s.rates(&[(dec!(0.1), dec!(0)), (dec!(0.2), dec!(1000))])
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
-            .unwrap()
-            .build()
             .unwrap();
+        let tariff = builder.build().unwrap();
 
         assert_eq!(tariff.import[0].rates.len(), 2);
         assert_eq!(
@@ -536,8 +551,8 @@ mod tests {
 
     #[test]
     fn test_threshold_tiers() {
-        let tariff = TariffBuilder::default()
-            .daily_supply(dec!(0.2))
+        let mut builder = TariffBuilder::default().daily_supply(dec!(0.2));
+        builder
             .rate_period(|b| {
                 b.rates(&[(dec!(0.1), dec!(1000))]).time_band(
                     HourMinute::min(),
@@ -545,8 +560,8 @@ mod tests {
                     None,
                 )
             })
-            .unwrap()
-            .build();
+            .unwrap();
+        let tariff = builder.build();
 
         match tariff {
             Err(TariffError::TierOrder(prev, cur)) => {
@@ -559,14 +574,16 @@ mod tests {
 
     #[test]
     fn test_rate_period_rejects_invalid_band() {
-        let result = TariffBuilder::default()
-            .rate_period(|s| s.time_band(HourMinute::max(), HourMinute::min(), None)); // start > end
+        let mut builder = TariffBuilder::default();
+        let result =
+            builder.rate_period(|s| s.time_band(HourMinute::max(), HourMinute::min(), None)); // start > end
         assert!(matches!(result, Err(TariffError::InvalidTimeBand(_))));
     }
 
     #[test]
     fn test_band_gap() {
-        let tariff = TariffBuilder::default()
+        let mut builder = TariffBuilder::default();
+        builder
             .rate_period(|x| {
                 x.rates(&[(dec!(1.0), dec!(0))]).time_band(
                     HourMinute::from_str("16:00").unwrap(),
@@ -574,15 +591,15 @@ mod tests {
                     None,
                 )
             })
-            .unwrap()
-            .build();
+            .unwrap();
 
-        assert!(matches!(tariff, Err(TariffError::Gap(_, _))));
+        assert!(matches!(builder.build(), Err(TariffError::Gap(_, _))));
     }
 
     #[test]
     fn test_overlap() {
-        let tariff = TariffBuilder::default()
+        let mut builder = TariffBuilder::default();
+        builder
             .rate_period(|x| {
                 x.rates(&[(dec!(1.0), dec!(0))]).time_band(
                     HourMinute::from_str("00:00").unwrap(),
@@ -590,7 +607,8 @@ mod tests {
                     None,
                 )
             })
-            .unwrap()
+            .unwrap();
+        builder
             .rate_period(|x| {
                 x.rates(&[(dec!(1.0), dec!(0))]).time_band(
                     HourMinute::from_str("16:00").unwrap(),
@@ -598,15 +616,15 @@ mod tests {
                     None,
                 )
             })
-            .unwrap()
-            .build();
+            .unwrap();
 
-        assert!(matches!(tariff, Err(TariffError::Overlap(_, _))));
+        assert!(matches!(builder.build(), Err(TariffError::Overlap(_, _))));
     }
 
     #[test]
     fn test_export_tariff() {
-        let tariff = TariffBuilder::default()
+        let mut builder = TariffBuilder::default();
+        builder
             .rate_period(|x| {
                 x.rates(&[(dec!(0.3), dec!(0))]).time_band(
                     HourMinute::min(),
@@ -614,7 +632,8 @@ mod tests {
                     None,
                 )
             })
-            .unwrap()
+            .unwrap();
+        builder
             .export_rate_period(|x| {
                 x.rates(&[(dec!(0.05), dec!(0))]).time_band(
                     HourMinute::min(),
@@ -622,21 +641,20 @@ mod tests {
                     None,
                 )
             })
-            .unwrap()
-            .build()
             .unwrap();
+        let tariff = builder.build().unwrap();
 
         assert_eq!(tariff.export.unwrap().len(), 1);
     }
 
     #[test]
     fn test_missing_rates() {
-        let result = TariffBuilder::default()
+        let mut builder = TariffBuilder::default();
+        builder
             .rate_period(|b| b.time_band(HourMinute::min(), HourMinute::max(), None))
-            .unwrap()
-            .build();
+            .unwrap();
 
-        assert!(matches!(result, Err(TariffError::EmptyRates)));
+        assert!(matches!(builder.build(), Err(TariffError::EmptyRates)));
     }
 
     #[test]

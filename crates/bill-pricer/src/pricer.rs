@@ -183,7 +183,7 @@ mod tests {
         supply: Decimal,
     ) -> Result<Tariff, TariffError> {
         let mut b = TariffBuilder::default().daily_supply(supply);
-        b = b.rate_period(|s| {
+        b.rate_period(|s| {
             s.rates(&[(weekday, dec!(0))]).time_band(
                 HourMinute::min(),
                 HourMinute::max(),
@@ -191,7 +191,7 @@ mod tests {
             )
         })?;
         if let Some(w) = weekend {
-            b = b.rate_period(|s| {
+            b.rate_period(|s| {
                 s.rates(&[(w, dec!(0))]).time_band(
                     HourMinute::min(),
                     HourMinute::max(),
@@ -360,23 +360,23 @@ mod tests {
         let flat_rate = dec!(0.2);
 
         let flat_tariff = || -> Result<Tariff, TariffError> {
-            TariffBuilder::default()
-                .daily_supply(dec!(1.0))
-                .rate_period(|s| {
-                    s.rates(&[(flat_rate, dec!(0))]).time_band(
-                        HourMinute::min(),
-                        HourMinute::max(),
-                        None,
-                    )
-                })?
-                .rate_period(|s| {
-                    s.rates(&[(flat_rate, dec!(0))]).time_band(
-                        HourMinute::from_str("16:00").unwrap(),
-                        HourMinute::from_str("23:59").unwrap(),
-                        Some(WeekDays::weekend()),
-                    )
-                })?
-                .build()
+            let mut builder = TariffBuilder::default().daily_supply(dec!(1.0));
+
+            builder.rate_period(|s| {
+                s.rates(&[(flat_rate, dec!(0))]).time_band(
+                    HourMinute::min(),
+                    HourMinute::max(),
+                    None,
+                )
+            })?;
+            builder.rate_period(|s| {
+                s.rates(&[(flat_rate, dec!(0))]).time_band(
+                    HourMinute::from_str("16:00").unwrap(),
+                    HourMinute::from_str("23:59").unwrap(),
+                    Some(WeekDays::weekend()),
+                )
+            })?;
+            builder.build()
         };
 
         assert!(matches!(&flat_tariff(), Err(TariffError::Overlap(_, _))));
@@ -405,16 +405,15 @@ mod tests {
 
     #[test]
     fn test_multiflat_daily() {
-        let tariff = TariffBuilder::default()
-            .daily_supply(dec!(1.0))
+        let mut builder = TariffBuilder::default().daily_supply(dec!(1.0));
+        builder
             .rate_period(|s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(12))])
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
-            .unwrap()
-            .consumption_period(Some(ConsumptionPeriod::Day))
-            .build()
             .unwrap();
+        let builder = builder.consumption_period(Some(ConsumptionPeriod::Day));
+        let tariff = builder.build().unwrap();
 
         let smart_meter = generate_smart_meter(
             &GeneratorConfig {
@@ -438,16 +437,16 @@ mod tests {
 
     #[test]
     fn test_multiflat_monthly() {
-        let tariff = TariffBuilder::default()
+        let mut builder = TariffBuilder::default()
             .daily_supply(dec!(1.0))
+            .consumption_period(Some(ConsumptionPeriod::Month));
+        builder
             .rate_period(|s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(0.4), dec!(200))])
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
-            .unwrap()
-            .consumption_period(Some(ConsumptionPeriod::Month))
-            .build()
             .unwrap();
+        let tariff = builder.build().unwrap();
 
         let smart_meter = generate_smart_meter(
             &GeneratorConfig {
@@ -507,16 +506,16 @@ mod tests {
         });
         let pricing_input = priced(&smart_meter, SYDNEY);
 
-        let multiflat_tariff = TariffBuilder::default()
+        let mut builder = TariffBuilder::default()
             .daily_supply(dec!(1.0))
+            .consumption_period(Some(ConsumptionPeriod::Day));
+        builder
             .rate_period(|s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
-            .unwrap()
-            .consumption_period(Some(ConsumptionPeriod::Day))
-            .build()
             .unwrap();
+        let multiflat_tariff = builder.build().unwrap();
 
         // 10 *0.2 + 1* (36-10) +1 = 2+ 26 +1 = 29
         assert_eq!(
@@ -534,15 +533,14 @@ mod tests {
         });
         let pricing_input = priced(&smart_meter, SYDNEY);
 
-        let multiflat_tariff = TariffBuilder::default()
-            .daily_supply(dec!(1.0))
+        let mut builder = TariffBuilder::default().daily_supply(dec!(1.0));
+        builder
             .rate_period(|s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
-            .unwrap()
-            .build()
             .unwrap();
+        let multiflat_tariff = builder.build().unwrap();
 
         // 10 *0.2 + 1* (36-10) +1 = 2+ 26 +1 = 29
         assert_eq!(
@@ -590,17 +588,16 @@ mod tests {
         });
         let pricing_input = priced(&smart_meter, SYDNEY);
 
-        let multiflat_tariff = TariffBuilder::default()
+        let mut builder = TariffBuilder::default()
             .daily_supply(dec!(1.0))
-            .consumption_period(Some(ConsumptionPeriod::Day))
+            .consumption_period(Some(ConsumptionPeriod::Day));
+        builder
             .rate_period(|s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
-            .unwrap()
-            .build()
             .unwrap();
-
+        let multiflat_tariff = builder.build().unwrap();
         // 10 *0.2 + 14x1 +1 +10x0.2+15*1+1+10 *0.2 + 14x1 +1= 17+ 18+ 17 = 52
         assert_eq!(
             price(&multiflat_tariff, &pricing_input).unwrap().total_bill,
@@ -618,15 +615,14 @@ mod tests {
         });
         let pricing_input = priced(&smart_meter, SYDNEY);
 
-        let multiflat_tariff = TariffBuilder::default()
-            .daily_supply(dec!(1.0))
+        let mut builder = TariffBuilder::default().daily_supply(dec!(1.0));
+        builder
             .rate_period(|s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
-            .unwrap()
-            .build()
             .unwrap();
+        let multiflat_tariff = builder.build().unwrap();
 
         // 10 *0.2 + 14x1 + 1 + 24x1 +1 =
         assert_eq!(

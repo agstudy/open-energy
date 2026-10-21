@@ -197,7 +197,10 @@ pub async fn get_all_plans_details(
 
 #[cfg(test)]
 mod tests {
-    use bill_pricer::{pricer::price, tariff::ConsumptionPeriod};
+    use bill_pricer::{
+        pricer::price,
+        tariff::{ConsumptionPeriod, Tariff},
+    };
     use chrono_tz::Tz;
     use domain::meter::{MeterMeasure, PricingInput};
     use gen_meter::generator::{GeneratorConfig, generate_smart_meter};
@@ -214,15 +217,21 @@ mod tests {
         Tz::from_str(name).unwrap()
     }
 
+    fn get_tariffs(json: &str) -> Vec<Tariff> {
+        let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
+        offer
+            .data
+            .electricity_contract
+            .build_tariff()
+            .unwrap()
+            .import
+    }
+
     #[test]
     fn parses_origin_multiflat_vic_offer() {
-        let json = include_str!("../data/flat/OR2810912MS@VEC.json");
-        let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
-
-        let tariffs = offer.data.electricity_contract.build_tariff().unwrap();
+        let tariffs = get_tariffs(include_str!("../data/flat/OR2810912MS@VEC.json"));
         assert_eq!(tariffs.len(), 1);
         let tariff = tariffs.first().unwrap();
-
         assert_eq!(tariff.supply_rate(), Decimal::try_from(1.0939).unwrap());
         assert_eq!(tariff.consumption_period(), Some(ConsumptionPeriod::Day));
 
@@ -248,10 +257,7 @@ mod tests {
 
     #[test]
     fn parses_tou_overlapp_tariff() {
-        let json = include_str!("../data/tou/1ST764143MS@VEC.json");
-        let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
-
-        let tariffs = offer.data.electricity_contract.build_tariff().unwrap();
+        let tariffs = get_tariffs(include_str!("../data/tou/1ST764143MS@VEC.json"));
         assert_eq!(tariffs.len(), 1);
         let tariff = tariffs.first().unwrap();
 
@@ -273,9 +279,7 @@ mod tests {
 
     #[test]
     fn parses_tou_start_bigger_end_tariff() {
-        let json = include_str!("../data/tou/RED552217MBE13@EME.json");
-        let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
-        let tariffs = offer.data.electricity_contract.build_tariff().unwrap();
+        let tariffs = get_tariffs(include_str!("../data/tou/RED552217MBE13@EME.json"));
         assert_eq!(tariffs.len(), 1);
         let tariff = tariffs.first().unwrap();
         assert_eq!(tariff.supply_rate(), Decimal::try_from(1.30).unwrap());
@@ -284,12 +288,45 @@ mod tests {
 
     #[test]
     fn parses_tou_missing_tou() {
-        let json = include_str!("../data/tou/FLO806120MR@VEC.json");
-        let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
-        let tariffs = offer.data.electricity_contract.build_tariff().unwrap();
+        let tariffs = get_tariffs(include_str!("../data/tou/FLO806120MR@VEC.json"));
         assert_eq!(tariffs.len(), 1);
         let tariff = tariffs.first().unwrap();
         assert_eq!(tariff.supply_rate(), Decimal::try_from(1.7035).unwrap());
         assert_eq!(tariff.consumption_period(), None);
+    }
+
+    #[test]
+    fn parses_solar_tou() {
+        let tariffs = get_tariffs(include_str!("../data/tou/FLO806120MR@VEC.json"));
+        let tariff = tariffs.first().unwrap();
+        assert!(!tariff.export_tariff().is_empty());
+    }
+
+    #[test]
+    fn parses_solar_single_rate() {
+        let tariffs = get_tariffs(include_str!("../data/flat/OR2810912MS@VEC.json"));
+        let tariff = tariffs.first().unwrap();
+        assert!(!tariff.export_tariff().is_empty());
+    }
+    #[test]
+    fn parses_solar_tou_band_gap_00() {
+        let tariffs = get_tariffs(include_str!("../data/tou/RED552524MBE14@EME.json"));
+        let tariff = tariffs.first().unwrap();
+        assert!(!tariff.export_tariff().is_empty());
+    }
+
+    #[test]
+    fn parses_solar_tou_band_gap_10() {
+        let tariffs = get_tariffs(include_str!("../data/tou/IOR1159339MRE1@EME.json"));
+        let tariff = tariffs.first().unwrap();
+        assert!(!tariff.export_tariff().is_empty());
+    }
+
+
+    #[test]
+    fn parses_solar_multiflat() {
+        let tariffs = get_tariffs(include_str!("../data/1ST1122747MBE1@EME.json"));
+        let tariff = tariffs.first().unwrap();
+        assert!(!tariff.export_tariff().is_empty());
     }
 }

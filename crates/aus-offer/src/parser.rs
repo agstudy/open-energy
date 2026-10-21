@@ -10,8 +10,10 @@ use rayon::prelude::*;
 pub enum UnsupportedReason {
     #[error("pricing model")]
     Pricing(PricingModel),
-    #[error("")]
+    #[error("Type not implemented")]
     BlockType(RateBlockUType),
+    #[error("Solar model not supported")]
+    Solar,
 }
 
 // --errors
@@ -54,10 +56,9 @@ pub fn parse_offer_file(path: &Path) -> FileOutcome {
         Ok(b) => b,
         Err(e) => return FileOutcome::Failed(FailureReason::Json(e)),
     };
-    let tariffs = res.data.electricity_contract.build_tariff();
-    let pricing_model = res.data.electricity_contract.pricing_model;
-    match tariffs {
-        Ok(tariffs) => FileOutcome::Converted(pricing_model, tariffs.len()),
+    let pricing_model = res.data.electricity_contract.pricing_model.clone();
+    match res.data.electricity_contract.build_tariff() {
+        Ok(pt) => FileOutcome::Converted(pricing_model, pt.import.len()),
         Err(e) => match e {
             ParseContractError::NotImplemented(p) => {
                 FileOutcome::Unsupported(UnsupportedReason::Pricing(p))
@@ -66,7 +67,12 @@ pub fn parse_offer_file(path: &Path) -> FileOutcome {
                 FileOutcome::Unsupported(UnsupportedReason::BlockType(bt))
             }
             ParseContractError::ParseTariff(other) => {
+                eprintln!("{}: {other}", path.display());
                 FileOutcome::Failed(FailureReason::Tariff(other))
+            }
+            ParseContractError::UnsupportedMultipleOptions => {
+                eprintln!("unsuported multiple options {}", path.display());
+                FileOutcome::Unsupported(UnsupportedReason::Solar)
             }
         },
     }
