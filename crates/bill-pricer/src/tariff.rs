@@ -292,7 +292,11 @@ impl Tariff {
         self.cons_period
     }
 
-    #[must_use]
+    /// Gets the current season for md. 
+    /// 
+    /// # Errors
+    /// 
+    /// returns [`TariffError::NoSeasonForDate`] if no season contains md
     pub fn find_season(
         &self,
         direction: TariffDirection,
@@ -303,10 +307,10 @@ impl Tariff {
             TariffDirection::Export => self.export_tariff(),
         };
 
-        Ok(tariffs
+        tariffs
             .iter()
             .find(|s| s.season.contains(md))
-            .ok_or_else(|| TariffError::NoSeasonForDate(md))?)
+            .ok_or(TariffError::NoSeasonForDate(md))
     }
 
     #[must_use]
@@ -536,13 +540,7 @@ impl TariffBuilder {
         self.supply_rate = rate;
         self
     }
-    /// Adds an import rate period using the given builder closure.
-    ///
-    /// Overlap and coverage are not checked here; they are validated by
-    /// [`TariffBuilder::build`].
-    ///
-    /// # Errors
-
+ 
     fn season_mut_or_insert(
         seasons: &mut Vec<TariffSeason>,
         season: SeasonRange,
@@ -559,7 +557,14 @@ impl TariffBuilder {
             seasons.last_mut().expect("I just pushed , it is there")
         }
     }
-
+    
+    /// Adds an import rate period using the given builder closure.
+    ///
+    /// Overlap and coverage are not checked here; they are validated by
+    /// [`TariffBuilder::build`].
+    ///
+    /// # Errors
+    /// 
     /// Returns [`TariffError`] if `f` returns an error.
     pub fn rate_period<F>(&mut self, season: SeasonRange, f: F) -> Result<&mut Self, TariffError>
     where
