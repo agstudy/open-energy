@@ -175,7 +175,7 @@ mod tests {
       }
     }
   ],
-  "export": null,
+  "export": [],
   "discount": null,
   "supply_rate": "1.0",
   "cons_period": null
@@ -211,7 +211,7 @@ mod tests {
               }
             }
           ],
-          "export": null,
+          "export": [],
           "discount": null,
           "supply_rate": "1.0",
           "cons_period": null,

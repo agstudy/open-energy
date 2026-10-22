@@ -1,7 +1,12 @@
 use std::cmp::min;
 
-use chrono::Weekday;
-use domain::{HourMinute, hour_minute::InvalidStrHourMinute};
+use chrono::Datelike;
+use chrono::{NaiveDate, Weekday};
+use domain::{
+    HourMinute,
+    hour_minute::InvalidStrHourMinute,
+    year_month::{MonthDay, SeasonRange},
+};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
@@ -71,10 +76,71 @@ impl RatePeriod {
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub struct TariffSeason {
+    pub rates: Vec<RatePeriod>,
+    pub season: SeasonRange,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SeasonError {
+    #[error("seasons have gap at {0}")]
+    Gap(MonthDay),
+    #[error("seasons overlaps at {0}")]
+    Overlap(MonthDay),
+    #[error("no seasons defined")]
+    Empty,
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub enum EmptyBehavior {
+    Allow,
+    Reject,
+}
+/// Check full year for tariff seasons
+///
+/// This function will be used for mondatory/optioan tariff sutructures
+/// import is mondtaory , export is less
+/// The use of `empty_behavior` is to allow or reject this behavior
+///
+/// # Errors
+///
+/// returns [`SeasonError::Gap`] if there a day date not covered
+/// returns [`SeasonError::Overlap`] if there a day date covered multi times
+pub fn check_full_year(
+    seasons: &[SeasonRange],
+    empty_behavior: &EmptyBehavior,
+) -> Result<(), SeasonError> {
+    const ORIGIN: NaiveDate = match NaiveDate::from_ymd_opt(2017, 1, 1) {
+        Some(d) => d,
+        None => panic!("2017-01-01 is a valid date"),
+    };
+    if seasons.is_empty() {
+        match empty_behavior {
+            EmptyBehavior::Reject => return Err(SeasonError::Empty),
+            EmptyBehavior::Allow => return Ok(()),
+        }
+    }
+
+    let origin = ORIGIN;
+    for day in origin.iter_days().take(365) {
+        let md = MonthDay::new_unchecked(day.month(), day.day());
+        let count = seasons.iter().filter(|s| s.contains(md)).count();
+        if count == 0 {
+            return Err(SeasonError::Gap(md));
+        }
+        if count > 1 {
+            return Err(SeasonError::Overlap(md));
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(try_from = "TariffRaw")]
 pub struct Tariff {
     import: Vec<RatePeriod>,
-    export: Option<Vec<RatePeriod>>,
+    export: Vec<RatePeriod>,
     discount: Option<Vec<Discount>>, // todo: apply discounts
     supply_rate: Decimal,
     cons_period: Option<ConsumptionPeriod>,
@@ -83,7 +149,7 @@ pub struct Tariff {
 #[derive(Deserialize)]
 pub struct TariffRaw {
     import: Vec<RatePeriod>,
-    export: Option<Vec<RatePeriod>>,
+    export: Vec<RatePeriod>,
     discount: Option<Vec<Discount>>,
     supply_rate: Decimal,
     cons_period: Option<ConsumptionPeriod>,
@@ -211,8 +277,8 @@ impl Tariff {
                 validate_tariff(day, &rps)?;
             }
         }
-        if let Some(export) = &self.export {
-            for (day, rps) in group_per_weekday(export) {
+        if !self.export.is_empty() {
+            for (day, rps) in group_per_weekday(&self.export) {
                 validate_tariff(day, &rps)?;
             }
         }
@@ -235,7 +301,7 @@ impl Tariff {
 
     #[must_use]
     pub fn export_tariff(&self) -> &[RatePeriod] {
-        self.export.as_deref().unwrap_or(&[])
+        self.export.as_slice()
     }
 }
 
@@ -383,7 +449,7 @@ impl RatePeriodBuilder {
 #[derive(Default)]
 pub struct TariffBuilder {
     import: Vec<RatePeriod>,
-    export: Option<Vec<RatePeriod>>,
+    export: Vec<RatePeriod>,
     discount: Option<Vec<Discount>>,
     supply_rate: Decimal,
     cons_period: Option<ConsumptionPeriod>,
@@ -441,7 +507,7 @@ impl TariffBuilder {
         rates: &[(Decimal, Decimal)],
         time_band: TimeBand,
     ) -> &mut Self {
-        self.export.get_or_insert_with(Vec::new).push(RatePeriod {
+        self.export.push(RatePeriod {
             rates: rates_mapper(rates),
             time_band,
         });
@@ -461,9 +527,7 @@ impl TariffBuilder {
         F: FnOnce(RatePeriodBuilder) -> Result<RatePeriodBuilder, TariffError>,
     {
         let builder = f(RatePeriodBuilder::default())?;
-        self.export
-            .get_or_insert_with(Vec::new)
-            .push(builder.build());
+        self.export.push(builder.build());
 
         Ok(self)
     }
@@ -644,7 +708,7 @@ mod tests {
             .unwrap();
         let tariff = builder.build().unwrap();
 
-        assert_eq!(tariff.export.unwrap().len(), 1);
+        assert_eq!(tariff.export.len(), 1);
     }
 
     #[test]

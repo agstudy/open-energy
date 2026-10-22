@@ -4,19 +4,19 @@ use std::str::FromStr;
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String")]
 pub struct MonthDay {
-    month: u8,
-    day: u8,
+    month: u32,
+    day: u32,
 }
 
 impl MonthDay {
-    pub const MAX_DAY: u8 = 31;
-    pub const MAX_MONTH: u8 = 12;
+    pub const MAX_DAY: u32 = 31;
+    pub const MAX_MONTH: u32 = 12;
     // Builds an year and month pair.
     ///
     /// # Errors
     ///
     /// Returns [`YearMonthError`]
-    pub fn new(month: u8, day: u8) -> Result<Self, MonthDayError> {
+    pub fn new(month: u32, day: u32) -> Result<Self, MonthDayError> {
         if (1..=Self::MAX_DAY).contains(&day) && (1..=Self::MAX_MONTH).contains(&month) {
             Ok(MonthDay { month, day })
         } else {
@@ -25,17 +25,17 @@ impl MonthDay {
     }
 
     #[must_use]
-    pub fn new_unchecked(month: u8, day: u8) -> Self {
+    pub fn new_unchecked(month: u32, day: u32) -> Self {
         MonthDay { month, day }
     }
 
     #[must_use]
-    pub fn month(&self) -> u8 {
+    pub fn month(&self) -> u32 {
         self.month
     }
 
     #[must_use]
-    pub fn day(&self) -> u8 {
+    pub fn day(&self) -> u32 {
         self.day
     }
 }
@@ -43,7 +43,7 @@ impl MonthDay {
 #[derive(Debug, thiserror::Error)]
 pub enum MonthDayError {
     #[error("invalid season {0:02}-{1:02} (month must be 1-12, day 1-31)")]
-    MonthDay(u8, u8),
+    MonthDay(u32, u32),
     #[error("invalid season {0} (month must be 1-12, day 1-31)")]
     MonthDayStr(String),
 }
@@ -55,8 +55,8 @@ impl TryFrom<&str> for MonthDay {
         let err = || MonthDayError::MonthDayStr(value.into());
         let (y, m) = value.split_once('-').ok_or_else(err)?;
 
-        let month = u8::from_str(y).map_err(|_| err())?;
-        let day = u8::from_str(m).map_err(|_| err())?;
+        let month = u32::from_str(y).map_err(|_| err())?;
+        let day = u32::from_str(m).map_err(|_| err())?;
 
         MonthDay::new(month, day)
     }
@@ -75,7 +75,7 @@ impl std::fmt::Display for MonthDay {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SeasonRange {
     pub start_date: MonthDay,
     pub end_date: MonthDay,
