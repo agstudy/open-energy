@@ -2,7 +2,7 @@ use bill_pricer::{
     tariff::{ConsumptionPeriod, TariffBuilder, TariffError},
     tariff_factory::TariffFactory,
 };
-use domain::year_month::MonthDay;
+use domain::year_month::{MonthDay, SeasonRange};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
@@ -163,11 +163,15 @@ impl PeriodTariff {
 
         let mut builder = TariffBuilder::default();
         let starts = all_starts(&tou_rates);
+        let season = SeasonRange {
+            start_date: self.start_date,
+            end_date: self.end_date,
+        };
         for tou_period in tou_rates {
             let blocks = block_rates(&tou_period.rates);
             for time_band in &tou_period.time_of_use {
                 for tb in time_band.to_time_band(&starts)? {
-                    builder = builder.add_rate_period(&blocks, tb);
+                    builder.add_rate_period(season, &blocks, tb);
                 }
             }
             builder = builder.consumption_period(Self::get_consumption_period(

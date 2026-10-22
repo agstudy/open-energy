@@ -1,4 +1,5 @@
 use crate::tariff::ConsumptionPeriod;
+use crate::tariff::Instant;
 use crate::tariff::PricingError;
 use crate::tariff::Tariff;
 use crate::tariff::TariffDirection;
@@ -73,7 +74,6 @@ fn reset_acc(r: &Reading, tariff: &Tariff, acc: &mut Acc) {
 }
 
 fn price_variable(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc, PricingError> {
-    let has_export = !tariff.export_tariff().is_empty();
     let mut acc = Acc {
         import_price: Decimal::ZERO,
         import_kwh: Decimal::ZERO,
@@ -84,10 +84,15 @@ fn price_variable(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc, 
     for r in pricing_input.readings() {
         reset_acc(r, tariff, &mut acc);
         // import
+        let instant = Instant {
+            hm: r.local.hour_minute,
+            weekday: r.local.weekday,
+            md: r.local.month_day,
+        };
+
         let import_cost = tariff.cost_at(
             TariffDirection::Import,
-            r.local.hour_minute,
-            r.local.weekday,
+            &instant,
             acc.import_kwh,
             r.meter.import,
         )?;
@@ -95,14 +100,9 @@ fn price_variable(tariff: &Tariff, pricing_input: &PricingInput) -> Result<Acc, 
         acc.import_kwh += r.meter.import;
 
         // export
-        if has_export && let Some(export) = r.meter.export {
-            let export_cost = tariff.cost_at(
-                TariffDirection::Export,
-                r.local.hour_minute,
-                r.local.weekday,
-                acc.export_kwh,
-                export,
-            )?;
+        if let Some(export) = r.meter.export {
+            let export_cost =
+                tariff.cost_at(TariffDirection::Export, &instant, acc.export_kwh, export)?;
             acc.export_price += export_cost;
             acc.export_kwh += export;
         }
@@ -150,7 +150,7 @@ mod tests {
     };
 
     use super::*;
-    use domain::{hour_minute::HourMinute, meter::MeterMeasure};
+    use domain::{hour_minute::HourMinute, meter::MeterMeasure, year_month::SeasonRange};
     use gen_meter::generator::{GeneratorConfig, generate_smart_meter};
     use rust_decimal_macros::dec;
 
@@ -183,7 +183,7 @@ mod tests {
         supply: Decimal,
     ) -> Result<Tariff, TariffError> {
         let mut b = TariffBuilder::default().daily_supply(supply);
-        b.rate_period(|s| {
+        b.rate_period(SeasonRange::full_year(), |s| {
             s.rates(&[(weekday, dec!(0))]).time_band(
                 HourMinute::min(),
                 HourMinute::max(),
@@ -191,7 +191,7 @@ mod tests {
             )
         })?;
         if let Some(w) = weekend {
-            b.rate_period(|s| {
+            b.rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(w, dec!(0))]).time_band(
                     HourMinute::min(),
                     HourMinute::max(),
@@ -362,14 +362,14 @@ mod tests {
         let flat_tariff = || -> Result<Tariff, TariffError> {
             let mut builder = TariffBuilder::default().daily_supply(dec!(1.0));
 
-            builder.rate_period(|s| {
+            builder.rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(flat_rate, dec!(0))]).time_band(
                     HourMinute::min(),
                     HourMinute::max(),
                     None,
                 )
             })?;
-            builder.rate_period(|s| {
+            builder.rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(flat_rate, dec!(0))]).time_band(
                     HourMinute::from_str("16:00").unwrap(),
                     HourMinute::from_str("23:59").unwrap(),
@@ -407,7 +407,7 @@ mod tests {
     fn test_multiflat_daily() {
         let mut builder = TariffBuilder::default().daily_supply(dec!(1.0));
         builder
-            .rate_period(|s| {
+            .rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(12))])
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
@@ -441,7 +441,7 @@ mod tests {
             .daily_supply(dec!(1.0))
             .consumption_period(Some(ConsumptionPeriod::Month));
         builder
-            .rate_period(|s| {
+            .rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(0.4), dec!(200))])
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
@@ -510,7 +510,7 @@ mod tests {
             .daily_supply(dec!(1.0))
             .consumption_period(Some(ConsumptionPeriod::Day));
         builder
-            .rate_period(|s| {
+            .rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
@@ -535,7 +535,7 @@ mod tests {
 
         let mut builder = TariffBuilder::default().daily_supply(dec!(1.0));
         builder
-            .rate_period(|s| {
+            .rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
@@ -592,7 +592,7 @@ mod tests {
             .daily_supply(dec!(1.0))
             .consumption_period(Some(ConsumptionPeriod::Day));
         builder
-            .rate_period(|s| {
+            .rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
@@ -617,7 +617,7 @@ mod tests {
 
         let mut builder = TariffBuilder::default().daily_supply(dec!(1.0));
         builder
-            .rate_period(|s| {
+            .rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })

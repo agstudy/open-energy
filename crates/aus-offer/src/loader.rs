@@ -278,13 +278,17 @@ mod tests {
 
         assert_eq!(tariff.supply_rate(), Decimal::try_from(1.498).unwrap());
         assert_eq!(tariff.consumption_period(), None);
-
+        let mut windows = Vec::new();
         //This plan: the converted weekday windows are [00:00–08:59, 09:00–20:59, 21:00–23:59].
-        let windows = tariff
-            .import_tariff()
-            .iter()
-            .map(|r| format!("{}-{}", r.time_band.start(), r.time_band.end()))
-            .collect::<Vec<String>>();
+        for season in tariff.import_tariff() {
+            for period in &season.periods {
+                windows.push(format!(
+                    "{}-{}",
+                    period.time_band.start(),
+                    period.time_band.end()
+                ));
+            }
+        }
 
         assert_eq!(
             windows,

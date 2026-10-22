@@ -46,7 +46,7 @@ pub enum ConsumptionPeriod {
     Quarterly,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct RatePeriod {
     pub rates: Vec<RateBlock>,
     pub time_band: TimeBand,
@@ -75,9 +75,9 @@ impl RatePeriod {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct TariffSeason {
-    pub rates: Vec<RatePeriod>,
+    pub periods: Vec<RatePeriod>,
     pub season: SeasonRange,
 }
 
@@ -139,8 +139,8 @@ pub fn check_full_year(
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(try_from = "TariffRaw")]
 pub struct Tariff {
-    import: Vec<RatePeriod>,
-    export: Vec<RatePeriod>,
+    import: Vec<TariffSeason>,
+    export: Vec<TariffSeason>,
     discount: Option<Vec<Discount>>, // todo: apply discounts
     supply_rate: Decimal,
     cons_period: Option<ConsumptionPeriod>,
@@ -148,8 +148,8 @@ pub struct Tariff {
 
 #[derive(Deserialize)]
 pub struct TariffRaw {
-    import: Vec<RatePeriod>,
-    export: Vec<RatePeriod>,
+    import: Vec<TariffSeason>,
+    export: Vec<TariffSeason>,
     discount: Option<Vec<Discount>>,
     supply_rate: Decimal,
     cons_period: Option<ConsumptionPeriod>,
@@ -195,6 +195,9 @@ pub enum TariffError {
     InvalidTimeBand(#[from] InvalidTimeBand),
     #[error(transparent)]
     InvalidStrHourMinute(#[from] InvalidStrHourMinute),
+
+    #[error("No season found at {0}")]
+    NoSeasonForDate(MonthDay),
 }
 
 fn cumulative_cost(rates: &[RateBlock], up_to: Decimal) -> Decimal {
@@ -216,6 +219,13 @@ pub enum TariffDirection {
     Import,
     Export,
 }
+
+pub struct Instant {
+    pub md: MonthDay,
+    pub hm: HourMinute,
+    pub weekday: Weekday,
+}
+
 impl Tariff {
     /// Returns the rate period of the given direction that applies at a time of day and weekday.
     ///
@@ -226,14 +236,99 @@ impl Tariff {
     pub fn period_at(
         &self,
         direction: TariffDirection,
-        hm: HourMinute,
-        weekday: Weekday,
+        instant: &Instant,
     ) -> Result<&RatePeriod, TariffError> {
-        let periods = match direction {
+        self.find_season(direction, instant.md)?
+            .period_at(instant.hm, instant.weekday)
+    }
+
+    /// Returns the cost of consuming `delta` kWh in the period that applies at `hm` and `weekday`,
+    /// given `consumed_before` kWh already counted in the current reset period.
+    ///
+    /// The cost is the difference between the cumulative tier cost after and before the reading,
+    /// so a reading that crosses one or more tier thresholds is priced across them. The result is
+    /// not rounded.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Tariff::period_at`].
+    pub fn cost_at(
+        &self,
+        direction: TariffDirection,
+        instant: &Instant,
+        consumed_before: Decimal,
+        delta: Decimal,
+    ) -> Result<Decimal, TariffError> {
+        let tariff_season = self.find_season(direction, instant.md)?;
+        tariff_season.cost_at(instant.hm, instant.weekday, consumed_before, delta)
+    }
+
+    /// # Errors
+    ///
+    /// Returns [`TariffError::Gap`] if a day is not fully covered,
+    /// [`TariffError::Overlap`] if bands overlap, [`TariffError::TierOrder`]
+    /// if tier thresholds are not strictly increasing from zero, or
+    /// [`TariffError::EmptyRates`] if a period has no rate blocks.
+    pub fn validate(&self) -> Result<(), TariffError> {
+        if !self.import.is_empty() {
+            for tariff_season in &self.import {
+                tariff_season.validate()?;
+            }
+        }
+        if !self.export.is_empty() {
+            for tariff_season in &self.export {
+                tariff_season.validate()?;
+            }
+        }
+        Ok(())
+    }
+    #[must_use]
+    pub fn supply_rate(&self) -> Decimal {
+        self.supply_rate
+    }
+
+    #[must_use]
+    pub fn consumption_period(&self) -> Option<ConsumptionPeriod> {
+        self.cons_period
+    }
+
+    #[must_use]
+    pub fn find_season(
+        &self,
+        direction: TariffDirection,
+        md: MonthDay,
+    ) -> Result<&TariffSeason, TariffError> {
+        let tariffs = match direction {
             TariffDirection::Import => self.import_tariff(),
             TariffDirection::Export => self.export_tariff(),
         };
-        let mut matches = periods.iter().filter(|p| p.applies_at(&hm, weekday));
+
+        Ok(tariffs
+            .iter()
+            .find(|s| s.season.contains(md))
+            .ok_or_else(|| TariffError::NoSeasonForDate(md))?)
+    }
+
+    #[must_use]
+    pub fn import_tariff(&self) -> &[TariffSeason] {
+        &self.import
+    }
+
+    #[must_use]
+    pub fn export_tariff(&self) -> &[TariffSeason] {
+        &self.export
+    }
+}
+
+impl TariffSeason {
+    /// Returns the rate period of the given direction that applies at a time of day and weekday.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TariffError::NoMatchingPeriod`] if no period covers `hm` on `weekday`,
+    /// and [`TariffError::Overlap`] if more than one does.
+    pub fn period_at(&self, hm: HourMinute, weekday: Weekday) -> Result<&RatePeriod, TariffError> {
+        let mut matches = self.periods.iter().filter(|p| p.applies_at(&hm, weekday));
         match (matches.next(), matches.next()) {
             (None, _) => Err(TariffError::NoMatchingPeriod(weekday, hm)),
             (Some(p), None) => Ok(p),
@@ -253,13 +348,12 @@ impl Tariff {
     /// Returns the same errors as [`Tariff::period_at`].
     pub fn cost_at(
         &self,
-        direction: TariffDirection,
         hm: HourMinute,
         weekday: Weekday,
         consumed_before: Decimal,
         delta: Decimal,
     ) -> Result<Decimal, TariffError> {
-        let period = self.period_at(direction, hm, weekday)?;
+        let period = self.period_at(hm, weekday)?;
         let start = cumulative_cost(&period.rates, consumed_before);
         let end = cumulative_cost(&period.rates, consumed_before + delta);
         Ok(end - start)
@@ -272,36 +366,11 @@ impl Tariff {
     /// if tier thresholds are not strictly increasing from zero, or
     /// [`TariffError::EmptyRates`] if a period has no rate blocks.
     pub fn validate(&self) -> Result<(), TariffError> {
-        if !self.import.is_empty() {
-            for (day, rps) in group_per_weekday(&self.import) {
-                validate_tariff(day, &rps)?;
-            }
+        for (day, rps) in group_per_weekday(&self.periods) {
+            validate_tariff(day, &rps)?;
         }
-        if !self.export.is_empty() {
-            for (day, rps) in group_per_weekday(&self.export) {
-                validate_tariff(day, &rps)?;
-            }
-        }
+
         Ok(())
-    }
-    #[must_use]
-    pub fn supply_rate(&self) -> Decimal {
-        self.supply_rate
-    }
-
-    #[must_use]
-    pub fn consumption_period(&self) -> Option<ConsumptionPeriod> {
-        self.cons_period
-    }
-
-    #[must_use]
-    pub fn import_tariff(&self) -> &[RatePeriod] {
-        self.import.as_slice()
-    }
-
-    #[must_use]
-    pub fn export_tariff(&self) -> &[RatePeriod] {
-        self.export.as_slice()
     }
 }
 
@@ -448,8 +517,8 @@ impl RatePeriodBuilder {
 
 #[derive(Default)]
 pub struct TariffBuilder {
-    import: Vec<RatePeriod>,
-    export: Vec<RatePeriod>,
+    import: Vec<TariffSeason>,
+    export: Vec<TariffSeason>,
     discount: Option<Vec<Discount>>,
     supply_rate: Decimal,
     cons_period: Option<ConsumptionPeriod>,
@@ -473,14 +542,33 @@ impl TariffBuilder {
     /// [`TariffBuilder::build`].
     ///
     /// # Errors
-    ///
+
+    fn season_mut_or_insert(
+        seasons: &mut Vec<TariffSeason>,
+        season: SeasonRange,
+    ) -> &mut TariffSeason {
+        let id = seasons.iter().position(|s| s.season == season);
+
+        if let Some(idx) = id {
+            &mut seasons[idx]
+        } else {
+            seasons.push(TariffSeason {
+                periods: Vec::new(),
+                season,
+            });
+            seasons.last_mut().expect("I just pushed , it is there")
+        }
+    }
+
     /// Returns [`TariffError`] if `f` returns an error.
-    pub fn rate_period<F>(&mut self, f: F) -> Result<&mut Self, TariffError>
+    pub fn rate_period<F>(&mut self, season: SeasonRange, f: F) -> Result<&mut Self, TariffError>
     where
         F: FnOnce(RatePeriodBuilder) -> Result<RatePeriodBuilder, TariffError>,
     {
-        let builder = f(RatePeriodBuilder::default())?;
-        self.import.push(builder.build());
+        let period = f(RatePeriodBuilder::default())?.build(); // may fail — no mutation yet
+        Self::season_mut_or_insert(&mut self.import, season)
+            .periods
+            .push(period);
 
         Ok(self)
     }
@@ -489,12 +577,21 @@ impl TariffBuilder {
     ///
     /// Overlap and coverage are not checked here; they are validated by
     /// [`TariffBuilder::build`].
-    #[must_use]
-    pub fn add_rate_period(mut self, rates: &[(Decimal, Decimal)], time_band: TimeBand) -> Self {
-        self.import.push(RatePeriod {
+    pub fn add_rate_period(
+        &mut self,
+        season: SeasonRange,
+        rates: &[(Decimal, Decimal)],
+        time_band: TimeBand,
+    ) -> &mut Self {
+        let period = RatePeriod {
             rates: rates_mapper(rates),
             time_band,
-        });
+        };
+
+        Self::season_mut_or_insert(&mut self.import, season)
+            .periods
+            .push(period);
+
         self
     }
 
@@ -504,13 +601,19 @@ impl TariffBuilder {
     /// [`TariffBuilder::build`].
     pub fn add_export_rate_period(
         &mut self,
+        season: SeasonRange,
         rates: &[(Decimal, Decimal)],
         time_band: TimeBand,
     ) -> &mut Self {
-        self.export.push(RatePeriod {
+        let period = RatePeriod {
             rates: rates_mapper(rates),
             time_band,
-        });
+        };
+
+        Self::season_mut_or_insert(&mut self.export, season)
+            .periods
+            .push(period);
+
         self
     }
 
@@ -522,12 +625,18 @@ impl TariffBuilder {
     /// # Errors
     ///
     /// Returns [`TariffError`] if `f` returns an error.
-    pub fn export_rate_period<F>(&mut self, f: F) -> Result<&mut Self, TariffError>
+    pub fn export_rate_period<F>(
+        &mut self,
+        season: SeasonRange,
+        f: F,
+    ) -> Result<&mut Self, TariffError>
     where
         F: FnOnce(RatePeriodBuilder) -> Result<RatePeriodBuilder, TariffError>,
     {
-        let builder = f(RatePeriodBuilder::default())?;
-        self.export.push(builder.build());
+        let period = f(RatePeriodBuilder::default())?.build(); // may fail — no mutation yet
+        Self::season_mut_or_insert(&mut self.export, season)
+            .periods
+            .push(period);
 
         Ok(self)
     }
@@ -596,16 +705,16 @@ mod tests {
     fn test_multi_tiers_success() {
         let mut builder = TariffBuilder::default().daily_supply(dec!(0.1));
         builder
-            .rate_period(|s| {
+            .rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(dec!(0.1), dec!(0)), (dec!(0.2), dec!(1000))])
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
             .unwrap();
         let tariff = builder.build().unwrap();
 
-        assert_eq!(tariff.import[0].rates.len(), 2);
+        assert_eq!(tariff.import[0].periods[0].rates.len(), 2);
         assert_eq!(
-            tariff.import[0].rates[1],
+            tariff.import[0].periods[0].rates[1],
             RateBlock {
                 rate: dec!(0.2),
                 lower_band: dec!(1000)
@@ -617,7 +726,7 @@ mod tests {
     fn test_threshold_tiers() {
         let mut builder = TariffBuilder::default().daily_supply(dec!(0.2));
         builder
-            .rate_period(|b| {
+            .rate_period(SeasonRange::full_year(), |b| {
                 b.rates(&[(dec!(0.1), dec!(1000))]).time_band(
                     HourMinute::min(),
                     HourMinute::max(),
@@ -639,8 +748,9 @@ mod tests {
     #[test]
     fn test_rate_period_rejects_invalid_band() {
         let mut builder = TariffBuilder::default();
-        let result =
-            builder.rate_period(|s| s.time_band(HourMinute::max(), HourMinute::min(), None)); // start > end
+        let result = builder.rate_period(SeasonRange::full_year(), |s| {
+            s.time_band(HourMinute::max(), HourMinute::min(), None)
+        }); // start > end
         assert!(matches!(result, Err(TariffError::InvalidTimeBand(_))));
     }
 
@@ -648,7 +758,7 @@ mod tests {
     fn test_band_gap() {
         let mut builder = TariffBuilder::default();
         builder
-            .rate_period(|x| {
+            .rate_period(SeasonRange::full_year(), |x| {
                 x.rates(&[(dec!(1.0), dec!(0))]).time_band(
                     HourMinute::from_str("16:00").unwrap(),
                     HourMinute::from_str("20:00").unwrap(),
@@ -664,7 +774,7 @@ mod tests {
     fn test_overlap() {
         let mut builder = TariffBuilder::default();
         builder
-            .rate_period(|x| {
+            .rate_period(SeasonRange::full_year(), |x| {
                 x.rates(&[(dec!(1.0), dec!(0))]).time_band(
                     HourMinute::from_str("00:00").unwrap(),
                     HourMinute::from_str("20:00").unwrap(),
@@ -673,7 +783,7 @@ mod tests {
             })
             .unwrap();
         builder
-            .rate_period(|x| {
+            .rate_period(SeasonRange::full_year(), |x| {
                 x.rates(&[(dec!(1.0), dec!(0))]).time_band(
                     HourMinute::from_str("16:00").unwrap(),
                     HourMinute::from_str("23:59").unwrap(),
@@ -689,7 +799,7 @@ mod tests {
     fn test_export_tariff() {
         let mut builder = TariffBuilder::default();
         builder
-            .rate_period(|x| {
+            .rate_period(SeasonRange::full_year(), |x| {
                 x.rates(&[(dec!(0.3), dec!(0))]).time_band(
                     HourMinute::min(),
                     HourMinute::max(),
@@ -698,7 +808,7 @@ mod tests {
             })
             .unwrap();
         builder
-            .export_rate_period(|x| {
+            .export_rate_period(SeasonRange::full_year(), |x| {
                 x.rates(&[(dec!(0.05), dec!(0))]).time_band(
                     HourMinute::min(),
                     HourMinute::max(),
@@ -715,7 +825,9 @@ mod tests {
     fn test_missing_rates() {
         let mut builder = TariffBuilder::default();
         builder
-            .rate_period(|b| b.time_band(HourMinute::min(), HourMinute::max(), None))
+            .rate_period(SeasonRange::full_year(), |b| {
+                b.time_band(HourMinute::min(), HourMinute::max(), None)
+            })
             .unwrap();
 
         assert!(matches!(builder.build(), Err(TariffError::EmptyRates)));
@@ -733,11 +845,15 @@ mod tests {
             .unwrap();
 
         let cost = |b: u32, d: u32| -> Decimal {
+            let instant = Instant {
+                weekday: Weekday::Fri,
+                hm: HourMinute::new_unchecked(1, 0),
+                md: MonthDay::new_unchecked(1, 1),
+            };
             tariff
                 .cost_at(
                     TariffDirection::Import,
-                    HourMinute::new_unchecked(1, 0),
-                    Weekday::Fri,
+                    &instant,
                     Decimal::from(b),
                     Decimal::from(d),
                 )
@@ -765,11 +881,15 @@ mod tests {
         let tariff = TariffFactory::flat(dec!(1), dec!(1.0)).unwrap();
 
         let cost = |b: u32, d: u32| -> Decimal {
+            let instant = Instant {
+                weekday: Weekday::Fri,
+                hm: HourMinute::new_unchecked(1, 0),
+                md: MonthDay::new_unchecked(1, 1),
+            };
             tariff
                 .cost_at(
                     TariffDirection::Import,
-                    HourMinute::new_unchecked(1, 0),
-                    Weekday::Fri,
+                    &instant,
                     Decimal::from(b),
                     Decimal::from(d),
                 )

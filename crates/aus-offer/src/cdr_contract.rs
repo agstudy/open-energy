@@ -4,7 +4,10 @@ use std::{
 };
 
 use bill_pricer::tariff::{Tariff, TariffBuilder, TariffError};
-use domain::hour_minute::{END_OF_DAY, START_OF_DAY};
+use domain::{
+    hour_minute::{END_OF_DAY, START_OF_DAY},
+    year_month::SeasonRange,
+};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
@@ -252,7 +255,7 @@ impl PlanContract {
                             ));
                         }
 
-                        builder.add_export_rate_period(&blocks, tb);
+                        builder.add_export_rate_period(SeasonRange::full_year(), &blocks, tb);
                     }
                 }
             }
@@ -283,7 +286,7 @@ impl PlanContract {
         }
 
         builder
-            .export_rate_period(|s| {
+            .export_rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&block_rates(rates))
                     .time_band(START_OF_DAY, END_OF_DAY, None)
             })

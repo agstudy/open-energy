@@ -2,10 +2,16 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(try_from = "String")]
+#[serde(try_from = "String", into = "String")]
 pub struct MonthDay {
     month: u32,
     day: u32,
+}
+
+impl From<MonthDay> for String {
+    fn from(value: MonthDay) -> Self {
+        format!("{:02}-{:02}", value.month, value.day)
+    }
 }
 
 impl MonthDay {
@@ -75,7 +81,7 @@ impl std::fmt::Display for MonthDay {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Copy)]
 pub struct SeasonRange {
     pub start_date: MonthDay,
     pub end_date: MonthDay,
@@ -88,6 +94,13 @@ impl SeasonRange {
             md >= self.start_date && md <= self.end_date
         } else {
             md >= self.start_date || md <= self.end_date
+        }
+    }
+    #[must_use]
+    pub fn full_year() -> Self {
+        Self {
+            start_date: MonthDay::new_unchecked(1, 1),
+            end_date: MonthDay::new_unchecked(12, 31),
         }
     }
 }
