@@ -196,34 +196,34 @@ mod tests {
     fn test_deserialize_flat_tariff() {
         use serde_json::json;
         let flat_json = json!({
-          "import": [
-            {
-              "periods": [
-                {
-                  "rates": [
-                    {
-                      "rate": "0.1",
-                      "lower_band": "0"
-                    }
-                  ],
-                  "time_band": {
-     "start": "00:00",
-        "end": "23:59",
-        "days_of_week": null
-                  }
-                }
-              ],
-              "season": {
-                "start_date": "01-01",
-                "end_date": "12-31"
-                }
-            }
-          ],
-          "export": [],
-          "discount": null,
-          "supply_rate": "1.0",
-          "cons_period": null
-        });
+             "import": [
+               {
+                 "periods": [
+                   {
+                     "rates": [
+                       {
+                         "rate": "0.1",
+                         "lower_band": "0"
+                       }
+                     ],
+                     "time_band": {
+        "start": "00:00",
+           "end": "23:59",
+           "days_of_week": null
+                     }
+                   }
+                 ],
+                 "season": {
+                   "start_date": "01-01",
+                   "end_date": "12-31"
+                   }
+               }
+             ],
+             "export": [],
+             "discount": null,
+             "supply_rate": "1.0",
+             "cons_period": null
+           });
 
         let actual: Tariff = serde_json::from_value(flat_json).unwrap();
         assert_eq!(actual, TariffFactory::flat(dec!(0.1), dec!(1.0)).unwrap());

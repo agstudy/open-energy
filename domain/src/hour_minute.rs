@@ -13,7 +13,6 @@ pub struct HourMinute {
     minute: u32,
 }
 
-
 impl From<HourMinute> for String {
     fn from(value: HourMinute) -> Self {
         format!("{:02}:{:02}", value.hour, value.minute)
@@ -57,7 +56,6 @@ impl TryFrom<String> for HourMinute {
         value.as_str().try_into()
     }
 }
-
 
 impl HourMinute {
     pub const MAX_MINUTE: u32 = 59;
