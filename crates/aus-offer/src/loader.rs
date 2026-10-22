@@ -208,7 +208,10 @@ mod tests {
     use rust_decimal_macros::dec;
     use std::str::FromStr;
 
-    use crate::cdr_solar::{PayerType, SolarScheme};
+    use crate::{
+        cdr_contract::UnsupportedReason,
+        cdr_solar::{PayerType, SolarScheme},
+    };
 
     use super::*;
     fn priced(meter: &[MeterMeasure], zone: &str) -> PricingInput {
@@ -317,7 +320,9 @@ mod tests {
         let export = offer.data.electricity_contract.build_tariff();
         assert!(matches!(
             export,
-            Err(ParseContractError::UnsupportedMultipleOptions)
+            Err(ParseContractError::Unsupported(
+                UnsupportedReason::SolarMultiOptions
+            ))
         ));
     }
 
@@ -328,7 +333,9 @@ mod tests {
         let export = offer.data.electricity_contract.build_tariff();
         assert!(matches!(
             export,
-            Err(ParseContractError::UnsupportedMultipleOptions)
+            Err(ParseContractError::Unsupported(
+                UnsupportedReason::SolarMultiOptions
+            ))
         ));
     }
 

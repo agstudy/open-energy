@@ -13,7 +13,7 @@ use crate::{
     cdr_domain::{TariffUType, TimeZone, all_starts, block_rates},
     cdr_eligibility::PlanEligibility,
     cdr_solar::{PayerType, SolarScheme, SolarTariff},
-    cdr_tariff::{PeriodTariff, PeriodTariffError},
+    cdr_tariff::{PeriodTariff, PeriodTariffError, RateBlockUType},
 };
 
 /// The pricing model for the contract. Contracts for gas must use `SINGLE_RATE`. Note that the detail for the enumeration values are:<ul><li>`SINGLE_RATE`: all energy usage is charged at a single unit rate no matter when it is consumed. Multiple unit rates may exist that correspond to varying volumes of usage i.e. a 'block' or 'step' tariff (first 50kWh @ X cents, next 50kWh at Y cents etc.)</li><li>`SINGLE_RATE_CONT_LOAD`: as above, but with an additional, separate unit rate charged for all energy usage from a controlled load i.e. separately metered appliance like hot water service, pool pump etc.</li><li>`TIME_OF_USE`: energy usage is charged at unit rates that vary dependent on time of day and day of week that the energy is consumed</li><li>`TIME_OF_USE_CONT_LOAD`: as above, but with an additional, separate unit rate charged for all energy usage from a controlled load i.e. separately metered appliance like hot water service, pool pump etc.</li><li>`FLEXIBLE`: energy usage is charged at unit rates that vary based on external factors</li><li>`FLEXIBLE_CONT_LOAD`: as above, but with an additional, separate unit rate charged for all energy usage from a controlled load i.e. separately metered appliance like hot water service, pool pump etc.</li><li>`QUOTA`: all energy usage is charged at a single fixed rate, up to a specified usage quota/allowance. All excess usage beyond the allowance is then charged at a single unit rate. i.e. $50/month for up to 150kWh included usage.</li></ul>
@@ -34,7 +34,7 @@ pub enum PricingModel {
     #[serde(rename = "QUOTA")]
     Quota,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum BasePricingModel {
     SingleRate,
     TimeOfUse,
@@ -97,6 +97,22 @@ pub struct PlanContract {
     pub tariff_period: Vec<PeriodTariff>,
 }
 
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq, Hash)]
+pub enum UnsupportedReason {
+    #[error("pricing model")]
+    Pricing(PricingModel),
+    #[error("Type not implemented")]
+    BlockType(RateBlockUType),
+    #[error("Solar variante (multi choices) not supported")]
+    SolarMultiOptions,
+    #[error("Solar model not supported")]
+    SolarMultiFlatTou,
+    #[error("model gap tariff malformed")]
+    SolarGap,
+    #[error("other solar model like seasonal unsupported")]
+    SolarSeasonal,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ParseContractError {
     #[error("tariff: {0}")]
@@ -105,17 +121,8 @@ pub enum ParseContractError {
     #[error("pricing model {0:?} is not implemented yet")]
     NotImplemented(PricingModel),
 
-    #[error("solar multioptions is unsupported")]
-    UnsupportedMultipleOptions,
-
-    #[error("solar tou multiflat is unsupported")]
-    UnsupportedTouMultiflat,
-
-    #[error("solar gap: tariff malformed")]
-    UnsupportedGap,
-
-    #[error("solar unsupported")]
-    UnsupportedSolar,
+    #[error(transparent)]
+    Unsupported(#[from] UnsupportedReason),
 }
 
 pub struct PlanTariff {
@@ -210,10 +217,12 @@ impl PlanContract {
                         solar_map.insert((scheme, payer), t);
                     }
                     Err(TariffError::Overlap(..)) => {
-                        return Err(ParseContractError::UnsupportedMultipleOptions);
+                        return Err(ParseContractError::Unsupported(
+                            UnsupportedReason::SolarMultiOptions,
+                        ));
                     }
                     Err(TariffError::Gap(..)) => {
-                        return Err(ParseContractError::UnsupportedGap);
+                        return Err(ParseContractError::Unsupported(UnsupportedReason::SolarGap));
                     }
                     Err(e) => return Err(PeriodTariffError::from(e).into()),
                 }
@@ -238,7 +247,9 @@ impl PlanContract {
                         .map_err(PeriodTariffError::from)?
                     {
                         if blocks.iter().any(|(_, v)| *v > Decimal::ZERO) {
-                            return Err(ParseContractError::UnsupportedTouMultiflat);
+                            return Err(ParseContractError::Unsupported(
+                                UnsupportedReason::SolarMultiFlatTou,
+                            ));
                         }
 
                         builder.add_export_rate_period(&blocks, tb);
@@ -266,7 +277,9 @@ impl PlanContract {
                 .iter()
                 .all(|v| v.volume.unwrap_or(Decimal::ZERO) == Decimal::ZERO)
         {
-            return Err(ParseContractError::UnsupportedSolar);
+            return Err(ParseContractError::Unsupported(
+                UnsupportedReason::SolarSeasonal,
+            ));
         }
 
         builder

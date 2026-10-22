@@ -209,7 +209,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             QueryCmd::Offers { dir } => {
                 let stat = parse_offers_dir(dir);
-                println!("{stat:?}");
+                println!("{stat}");
             }
         },
     }
