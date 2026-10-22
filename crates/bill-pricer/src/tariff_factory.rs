@@ -170,14 +170,8 @@ mod tests {
         }
       ],
       "time_band": {
-        "start": {
-          "hour": 0,
-          "minute": 0
-        },
-        "end": {
-          "hour": 23,
-          "minute": 59
-        },
+        "start": "00:00",
+        "end": "23:59",
         "days_of_week": null
       }
     }
@@ -213,15 +207,9 @@ mod tests {
                     }
                   ],
                   "time_band": {
-                    "start": {
-                      "hour": 0,
-                      "minute": 0
-                    },
-                    "end": {
-                      "hour": 23,
-                      "minute": 59
-                    },
-                    "days_of_week": null
+     "start": "00:00",
+        "end": "23:59",
+        "days_of_week": null
                   }
                 }
               ],

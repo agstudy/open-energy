@@ -1,17 +1,23 @@
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-#[derive(Deserialize)]
 struct HourMinuteRaw {
     hour: u32,
     minute: u32,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
-#[serde(try_from = "HourMinuteRaw")]
+#[serde(try_from = "String", into = "String")]
 pub struct HourMinute {
     hour: u32,
     minute: u32,
+}
+
+
+impl From<HourMinute> for String {
+    fn from(value: HourMinute) -> Self {
+        format!("{:02}:{:02}", value.hour, value.minute)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -43,6 +49,15 @@ impl TryFrom<&str> for HourMinute {
         HourMinute::new(hour, minute).map_err(|_| InvalidStrHourMinute(value.into()))
     }
 }
+
+impl TryFrom<String> for HourMinute {
+    type Error = InvalidStrHourMinute;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value.as_str().try_into()
+    }
+}
+
 
 impl HourMinute {
     pub const MAX_MINUTE: u32 = 59;
