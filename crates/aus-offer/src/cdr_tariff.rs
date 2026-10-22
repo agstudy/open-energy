@@ -2,6 +2,7 @@ use bill_pricer::{
     tariff::{ConsumptionPeriod, TariffBuilder, TariffError},
     tariff_factory::TariffFactory,
 };
+use domain::year_month::MonthDay;
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
@@ -59,8 +60,8 @@ pub struct PeriodTariff {
     #[serde(rename = "type")]
     pub charge_type: Option<TariffChargeType>,
     pub display_name: String,
-    pub start_date: String,
-    pub end_date: String,
+    pub start_date: MonthDay,
+    pub end_date: MonthDay,
     pub daily_supply_charge_type: Option<DailySupplyChargeType>,
     pub daily_supply_charge: Option<Decimal>,
     pub time_zone: Option<TimeZone>,
