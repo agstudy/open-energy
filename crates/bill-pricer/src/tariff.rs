@@ -233,7 +233,7 @@ impl Tariff {
     /// [`TariffError::EmptyRates`] if a period has no rate blocks.
     /// it can also return [`TariffError::Season(SeasonError::Gap(md))`].
     pub fn validate(&self) -> Result<(), TariffError> {
-        TariffChecker::check_full_year(&self.import_tariff(), &EmptyBehavior::Reject)?;
+        TariffChecker::check_full_year(self.import_tariff(), &EmptyBehavior::Reject)?;
         for tariff_season in &self.import {
             tariff_season.validate()?;
         }
