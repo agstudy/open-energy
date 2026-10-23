@@ -163,4 +163,22 @@ mod tests {
             "07-01 is outside 11-01/03-31"
         );
     }
+
+    #[test]
+    fn month_day_ord_is_calendar() {
+        assert!(MonthDay::new_unchecked(1, 1) < MonthDay::new_unchecked(12, 31));
+        assert!(MonthDay::new_unchecked(2, 28) < MonthDay::new_unchecked(3, 1));
+        assert!(MonthDay::new_unchecked(2, 29) < MonthDay::new_unchecked(3, 1));
+    }
+
+    #[test]
+    fn test_wrapping_season_contains() {
+        let winter = SeasonRange {
+            start_date: "10-01".try_into().unwrap(),
+            end_date: "03-31".try_into().unwrap(),
+        };
+        assert!(winter.contains("01-15".try_into().unwrap())); // Jan: inside (wrap)
+        assert!(winter.contains("11-15".try_into().unwrap())); // Nov: inside
+        assert!(!winter.contains("06-15".try_into().unwrap())); // Jun: outside
+    }
 }

@@ -87,7 +87,9 @@ pub enum SeasonError {
     Gap(MonthDay),
     #[error("seasons overlaps at {0}")]
     Overlap(MonthDay),
-    #[error("no seasons defined")]
+    #[error("no seasons defined at {0}")]
+    NoSeasonForDate(MonthDay),
+    #[error("empty season")]
     Empty,
 }
 
@@ -95,45 +97,6 @@ pub enum SeasonError {
 pub enum EmptyBehavior {
     Allow,
     Reject,
-}
-/// Check full year for tariff seasons
-///
-/// This function will be used for mondatory/optioan tariff sutructures
-/// import is mondtaory , export is less
-/// The use of `empty_behavior` is to allow or reject this behavior
-///
-/// # Errors
-///
-/// returns [`SeasonError::Gap`] if there a day date not covered
-/// returns [`SeasonError::Overlap`] if there a day date covered multi times
-pub fn check_full_year(
-    seasons: &[SeasonRange],
-    empty_behavior: &EmptyBehavior,
-) -> Result<(), SeasonError> {
-    const ORIGIN: NaiveDate = match NaiveDate::from_ymd_opt(2017, 1, 1) {
-        Some(d) => d,
-        None => panic!("2017-01-01 is a valid date"),
-    };
-    if seasons.is_empty() {
-        match empty_behavior {
-            EmptyBehavior::Reject => return Err(SeasonError::Empty),
-            EmptyBehavior::Allow => return Ok(()),
-        }
-    }
-
-    let origin = ORIGIN;
-    for day in origin.iter_days().take(365) {
-        let md = MonthDay::new_unchecked(day.month(), day.day());
-        let count = seasons.iter().filter(|s| s.contains(md)).count();
-        if count == 0 {
-            return Err(SeasonError::Gap(md));
-        }
-        if count > 1 {
-            return Err(SeasonError::Overlap(md));
-        }
-    }
-
-    Ok(())
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -195,9 +158,8 @@ pub enum TariffError {
     InvalidTimeBand(#[from] InvalidTimeBand),
     #[error(transparent)]
     InvalidStrHourMinute(#[from] InvalidStrHourMinute),
-
-    #[error("No season found at {0}")]
-    NoSeasonForDate(MonthDay),
+    #[error(transparent)]
+    Season(#[from] SeasonError),
 }
 
 fn cumulative_cost(rates: &[RateBlock], up_to: Decimal) -> Decimal {
@@ -231,7 +193,7 @@ impl Tariff {
     ///
     /// # Errors
     ///
-    /// Returns [`TariffError::NoMatchingPeriod`] if no period covers `hm` on `weekday`,
+    /// Returns [`SeasonError::NoMatchingPeriod`] if no period covers `hm` on `weekday`,
     /// and [`TariffError::Overlap`] if more than one does.
     pub fn period_at(
         &self,
@@ -269,11 +231,11 @@ impl Tariff {
     /// [`TariffError::Overlap`] if bands overlap, [`TariffError::TierOrder`]
     /// if tier thresholds are not strictly increasing from zero, or
     /// [`TariffError::EmptyRates`] if a period has no rate blocks.
+    /// it can also return [`TariffError::Season(SeasonError::Gap(md))`].
     pub fn validate(&self) -> Result<(), TariffError> {
-        if !self.import.is_empty() {
-            for tariff_season in &self.import {
-                tariff_season.validate()?;
-            }
+        TariffChecker::check_full_year(&self.import_tariff(), &EmptyBehavior::Reject)?;
+        for tariff_season in &self.import {
+            tariff_season.validate()?;
         }
         if !self.export.is_empty() {
             for tariff_season in &self.export {
@@ -296,12 +258,12 @@ impl Tariff {
     ///
     /// # Errors
     ///
-    /// returns [`TariffError::NoSeasonForDate`] if no season contains md
+    /// returns [`SeasonError::NoSeasonForDate`] if no season contains md
     pub fn find_season(
         &self,
         direction: TariffDirection,
         md: MonthDay,
-    ) -> Result<&TariffSeason, TariffError> {
+    ) -> Result<&TariffSeason, SeasonError> {
         let tariffs = match direction {
             TariffDirection::Import => self.import_tariff(),
             TariffDirection::Export => self.export_tariff(),
@@ -310,17 +272,24 @@ impl Tariff {
         tariffs
             .iter()
             .find(|s| s.season.contains(md))
-            .ok_or(TariffError::NoSeasonForDate(md))
+            .ok_or(SeasonError::NoSeasonForDate(md))
     }
 
     #[must_use]
-    pub fn import_tariff(&self) -> &Vec<TariffSeason> {
+    pub fn import_tariff(&self) -> &[TariffSeason] {
         &self.import
     }
 
     #[must_use]
     pub fn export_tariff(&self) -> &[TariffSeason] {
         &self.export
+    }
+    #[must_use]
+    pub fn get_seasons(&self, direction: TariffDirection) -> Vec<SeasonRange> {
+        match direction {
+            TariffDirection::Import => self.import.iter().map(|a| a.season).collect(),
+            TariffDirection::Export => self.export.iter().map(|a| a.season).collect(),
+        }
     }
 }
 
@@ -370,97 +339,152 @@ impl TariffSeason {
     /// if tier thresholds are not strictly increasing from zero, or
     /// [`TariffError::EmptyRates`] if a period has no rate blocks.
     pub fn validate(&self) -> Result<(), TariffError> {
-        for (day, rps) in group_per_weekday(&self.periods) {
-            validate_tariff(day, &rps)?;
+        for (day, rps) in TariffChecker::group_per_weekday(&self.periods) {
+            TariffChecker::validate_tariff_period(day, &rps)?;
         }
 
         Ok(())
     }
 }
 
-fn group_per_weekday(rps: &[RatePeriod]) -> [(Weekday, Vec<&RatePeriod>); 7] {
-    [
-        Weekday::Mon,
-        Weekday::Tue,
-        Weekday::Wed,
-        Weekday::Thu,
-        Weekday::Fri,
-        Weekday::Sat,
-        Weekday::Sun,
-    ]
-    .map(|weekday| {
-        let mut day_rps: Vec<&RatePeriod> = rps
-            .iter()
-            .filter(|rp| {
-                rp.time_band
-                    .days_of_week()
-                    .is_none_or(|days| days.has(weekday))
-            })
-            .collect();
-        day_rps.sort_by_key(|rp| rp.time_band.start());
-        (weekday, day_rps)
-    })
-}
-/// Validate that a set of rate periods fully covers a day with no overlaps
-/// and monotonic tier thresholds.
-///
-/// ```text
-/// 2. cursor ← 0
-/// 3. for each (s_i, e_i) in sorted order:
-///      check_tier_order(rates_i)?
-///      if s_i > cursor:  return Gap(cursor)
-///      if s_i < cursor:  return Overlap(s_i)
-///      cursor ← e_i + 1
-/// 4. if cursor ≠ 1440: return Gap(cursor)
-/// 5. return Ok
-/// ```
-fn validate_tariff(day: Weekday, rps: &[&RatePeriod]) -> Result<(), TariffError> {
-    let hm = |val| from_minute_of_day_unchecked(val);
-    let mut cursor: u32 = 0;
-    for rp in rps {
-        check_tier_order(&rp.rates)?;
+struct TariffChecker;
+impl TariffChecker {
+    fn from_minute_of_day_unchecked(m: u32) -> HourMinute {
+        HourMinute::from_minute_of_day(m).expect("minute-of-day out of range")
+    }
 
-        let start = rp.time_band.start().minute_of_day();
-        let end = rp.time_band.end().minute_of_day();
+    fn group_per_weekday(rps: &[RatePeriod]) -> [(Weekday, Vec<&RatePeriod>); 7] {
+        [
+            Weekday::Mon,
+            Weekday::Tue,
+            Weekday::Wed,
+            Weekday::Thu,
+            Weekday::Fri,
+            Weekday::Sat,
+            Weekday::Sun,
+        ]
+        .map(|weekday| {
+            let mut day_rps: Vec<&RatePeriod> = rps
+                .iter()
+                .filter(|rp| {
+                    rp.time_band
+                        .days_of_week()
+                        .is_none_or(|days| days.has(weekday))
+                })
+                .collect();
+            day_rps.sort_by_key(|rp| rp.time_band.start());
+            (weekday, day_rps)
+        })
+    }
+    /// Validate that a set of rate periods fully covers a day with no overlaps
+    /// and monotonic tier thresholds.
+    ///
+    /// ```text
+    /// 2. cursor ← 0
+    /// 3. for each (s_i, e_i) in sorted order:
+    ///      check_tier_order(rates_i)?
+    ///      if s_i > cursor:  return Gap(cursor)
+    ///      if s_i < cursor:  return Overlap(s_i)
+    ///      cursor ← e_i + 1
+    /// 4. if cursor ≠ 1440: return Gap(cursor)
+    /// 5. return Ok
+    /// ```
+    fn validate_tariff_period(day: Weekday, rps: &[&RatePeriod]) -> Result<(), TariffError> {
+        let hm = |val| Self::from_minute_of_day_unchecked(val);
+        let mut cursor: u32 = 0;
+        for rp in rps {
+            Self::check_tier_order(&rp.rates)?;
 
-        if start > cursor {
-            return Err(TariffError::Gap(day, hm(cursor)));
-        } else if start < cursor {
-            return Err(TariffError::Overlap(day, hm(min(cursor, 1439))));
+            let start = rp.time_band.start().minute_of_day();
+            let end = rp.time_band.end().minute_of_day();
+
+            if start > cursor {
+                return Err(TariffError::Gap(day, hm(cursor)));
+            } else if start < cursor {
+                return Err(TariffError::Overlap(day, hm(min(cursor, 1439))));
+            }
+            cursor = end + 1;
         }
-        cursor = end + 1;
-    }
 
-    if cursor != 1440 {
-        return Err(TariffError::Gap(day, hm(min(cursor, 1439))));
-    }
-
-    Ok(())
-}
-
-fn from_minute_of_day_unchecked(m: u32) -> HourMinute {
-    HourMinute::from_minute_of_day(m).expect("minute-of-day out of range")
-}
-
-fn check_tier_order(rates: &[RateBlock]) -> Result<(), TariffError> {
-    let mut it = rates.iter().map(|v| v.lower_band);
-
-    let Some(first) = it.next() else {
-        return Err(TariffError::EmptyRates);
-    };
-
-    if first != Decimal::ZERO {
-        return Err(TariffError::TierOrder(first, Decimal::ZERO));
-    }
-
-    let mut prev = first;
-    for cur in it {
-        if prev >= cur {
-            return Err(TariffError::TierOrder(prev, cur));
+        if cursor != 1440 {
+            return Err(TariffError::Gap(day, hm(min(cursor, 1439))));
         }
-        prev = cur;
+
+        Ok(())
     }
-    Ok(())
+
+    fn check_tier_order(rates: &[RateBlock]) -> Result<(), TariffError> {
+        let mut it = rates.iter().map(|v| v.lower_band);
+
+        let Some(first) = it.next() else {
+            return Err(TariffError::EmptyRates);
+        };
+
+        if first != Decimal::ZERO {
+            return Err(TariffError::TierOrder(first, Decimal::ZERO));
+        }
+
+        let mut prev = first;
+        for cur in it {
+            if prev >= cur {
+                return Err(TariffError::TierOrder(prev, cur));
+            }
+            prev = cur;
+        }
+        Ok(())
+    }
+
+    /// Check full year for tariff seasons
+    ///
+    /// This function will be used for mondtaory/optional tariff sutructures
+    /// import is mondtaory , export is less
+    /// The use of `empty_behavior` is to allow or reject this behavior
+    ///
+    /// # Errors
+    ///
+    /// returns [`SeasonError::Gap`] if there a day date not covered
+    /// returns [`SeasonError::Overlap`] if there a day date covered multi times
+    fn check_full_year(
+        seasons: &[TariffSeason],
+        empty_behavior: &EmptyBehavior,
+    ) -> Result<(), SeasonError> {
+        const ORIGIN: NaiveDate = match NaiveDate::from_ymd_opt(2020, 1, 1) {
+            Some(d) => d,
+            None => panic!("2017-01-01 is a valid date"),
+        };
+
+        const NUM_YEAR_DAY: usize = 366; // Feb 29 is priced as Feb 28
+
+        if seasons.is_empty() {
+            match empty_behavior {
+                EmptyBehavior::Reject => return Err(SeasonError::Empty),
+                EmptyBehavior::Allow => return Ok(()),
+            }
+        }
+
+        let origin = ORIGIN;
+        for day in origin.iter_days().take(NUM_YEAR_DAY) {
+            let md = MonthDay::new_unchecked(day.month(), day.day());
+            // WRONG for time-of-use tariffs
+            let lookup_md = if md == MonthDay::new_unchecked(2, 29) {
+                MonthDay::new_unchecked(2, 28) // Feb 29 prices as Feb 28
+            } else {
+                md
+            };
+            let count = seasons
+                .iter()
+                .filter(|s| s.season.contains(lookup_md))
+                .count();
+            if count == 0 {
+                return Err(SeasonError::Gap(lookup_md));
+            }
+            if count > 1 {
+                return Err(SeasonError::Overlap(lookup_md));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 pub struct RatePeriodBuilder {
@@ -541,17 +565,14 @@ impl TariffBuilder {
         seasons: &mut Vec<TariffSeason>,
         season: SeasonRange,
     ) -> &mut TariffSeason {
-        let id = seasons.iter().position(|s| s.season == season);
-
-        if let Some(idx) = id {
-            &mut seasons[idx]
-        } else {
-            seasons.push(TariffSeason {
-                periods: Vec::new(),
-                season,
-            });
-            seasons.last_mut().expect("I just pushed , it is there")
+        if let Some(idx) = seasons.iter().position(|s| s.season == season) {
+            return &mut seasons[idx];
         }
+        seasons.push(TariffSeason {
+            periods: Vec::new(),
+            season,
+        });
+        seasons.last_mut().expect("just pushed")
     }
 
     /// Adds an import rate period using the given builder closure.
@@ -596,7 +617,7 @@ impl TariffBuilder {
         self
     }
 
-    /// Adds an impoexport rt rate period using direct `RatePeriod` parameters
+    /// Adds an export rate period using direct `RatePeriod` parameters
     ///
     /// Overlap and coverage are not checked here; they are validated by
     /// [`TariffBuilder::build`].

@@ -108,6 +108,12 @@ impl PeriodTariff {
             RateBlockUType::DemandCharges => Ok(()),
         }
     }
+    /// Provides daily supply rate
+    ///
+    /// # Errors
+    ///
+    /// Either not supported `brand` type (multiflat)
+    /// or missing field (mal formed data) `[PeriodTariffError::MissingField]`
     pub fn get_supply_rate(&self) -> Result<Decimal, PeriodTariffError> {
         if self
             .daily_supply_charge_type
@@ -194,7 +200,7 @@ impl PeriodTariff {
 }
 /// helper to parse consumption period
 #[must_use]
-pub fn get_consumption_period(reset_period: Option<ResetPeriod>) -> Option<ConsumptionPeriod> {
+pub fn get_consumption_period(reset_period: Option<&ResetPeriod>) -> Option<ConsumptionPeriod> {
     reset_period.as_ref().and_then(|p| match p {
         ResetPeriod::Daily => Some(ConsumptionPeriod::Day),
         ResetPeriod::Monthly => Some(ConsumptionPeriod::Month),

@@ -143,7 +143,7 @@ pub fn price(tariff: &Tariff, pricing_input: &PricingInput) -> Result<PricingRes
 mod tests {
 
     use crate::{
-        WeekDays,
+        TimeBand, WeekDays,
         tariff::{TariffBuilder, TariffError},
         tariff_factory::{TariffFactory, Window, WindowTiered},
         tests_utils::{get_tou_tariff, str_to_native_date, str_to_native_datetime, utc_from_local},
@@ -636,6 +636,53 @@ mod tests {
         assert_eq!(
             price(&multiflat_tariff, &pricing_input).unwrap().total_bill,
             dec!(42)
+        );
+    }
+
+    #[test]
+    fn test_two_seasons() {
+        // summer: Apr-Sep, one period; winter: Oct-Mar, another period
+        // build().unwrap()
+        // cost_at in summer vs winter returns different rates
+
+        let mut builder = TariffBuilder::default();
+        builder.daily_supply(dec!(0.0));
+
+        builder.add_rate_period(
+            SeasonRange {
+                start_date: "04-01".try_into().unwrap(), // MM-DD
+                end_date: "09-30".try_into().unwrap(),   // MM-DD
+            },
+            &[(dec!(1) / dec!(24), Decimal::ZERO)],
+            TimeBand::full_day(),
+        );
+        builder.add_rate_period(
+            SeasonRange {
+                start_date: "10-01".try_into().unwrap(), // MM-DD
+                end_date: "03-31".try_into().unwrap(),   // MM-DD
+            },
+            &[(dec!(2) / dec!(24), Decimal::ZERO)],
+            TimeBand::full_day(),
+        );
+
+        let summer_winter = builder.build().unwrap();
+
+        let smart_meter = sm(&GeneratorConfig {
+            daily_kwh: dec!(24),
+            start: "2026-09-01 00:00:00".into(),
+            end: "2026-10-31 00:00:00".into(),
+            ..Default::default()
+        });
+        let pricing_input = priced(&smart_meter, SYDNEY);
+
+        // (summer_rate * 30 + winter_rate *30)*24 = 30 *(w+s)/24 *24 = 90
+        // end is exclusive
+        assert_eq!(
+            price(&summer_winter, &pricing_input)
+                .unwrap()
+                .total_bill
+                .round(),
+            dec!(90)
         );
     }
 }

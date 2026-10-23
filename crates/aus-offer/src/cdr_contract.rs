@@ -189,7 +189,7 @@ impl PlanContract {
         for period in &self.tariff_period {
             if period.rate_block_u_type == RateBlockUType::SingleRates {
                 let single = period.get_single()?;
-                period_cons = get_consumption_period(single.reset_period.clone());
+                period_cons = get_consumption_period(single.reset_period.as_ref());
             }
         }
 
