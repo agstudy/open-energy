@@ -57,8 +57,8 @@ enum TariffCmd {
 
 #[derive(Subcommand)]
 enum QueryCmd {
-    Plans,
-    Offers {
+    Load,
+    Parse {
         #[arg(long)]
         dir: PathBuf,
     },
@@ -200,14 +200,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("\n{bill}");
         }
         Commands::Cdr { query } => match query {
-            QueryCmd::Plans => {
+            QueryCmd::Load => {
                 let client = reqwest::Client::new();
                 let plans = get_all_plans_details(&client).await?;
                 for (i, (k, v)) in plans.iter().enumerate() {
                     println!("{}:{}:{}", k, v.brand, i);
                 }
             }
-            QueryCmd::Offers { dir } => {
+            QueryCmd::Parse { dir } => {
                 let stat = parse_offers_dir(dir);
                 println!("{stat}");
             }

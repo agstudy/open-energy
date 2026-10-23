@@ -182,8 +182,9 @@ mod tests {
         weekend: Option<Decimal>,
         supply: Decimal,
     ) -> Result<Tariff, TariffError> {
-        let mut b = TariffBuilder::default().daily_supply(supply);
-        b.rate_period(SeasonRange::full_year(), |s| {
+        let mut builder = TariffBuilder::default();
+        builder.daily_supply(supply);
+        builder.rate_period(SeasonRange::full_year(), |s| {
             s.rates(&[(weekday, dec!(0))]).time_band(
                 HourMinute::min(),
                 HourMinute::max(),
@@ -191,7 +192,7 @@ mod tests {
             )
         })?;
         if let Some(w) = weekend {
-            b.rate_period(SeasonRange::full_year(), |s| {
+            builder.rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(w, dec!(0))]).time_band(
                     HourMinute::min(),
                     HourMinute::max(),
@@ -199,7 +200,7 @@ mod tests {
                 )
             })?;
         }
-        b.build()
+        builder.build()
     }
 
     #[test]
@@ -360,7 +361,8 @@ mod tests {
         let flat_rate = dec!(0.2);
 
         let flat_tariff = || -> Result<Tariff, TariffError> {
-            let mut builder = TariffBuilder::default().daily_supply(dec!(1.0));
+            let mut builder = TariffBuilder::default();
+            builder.daily_supply(dec!(1.0));
 
             builder.rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(flat_rate, dec!(0))]).time_band(
@@ -405,14 +407,15 @@ mod tests {
 
     #[test]
     fn test_multiflat_daily() {
-        let mut builder = TariffBuilder::default().daily_supply(dec!(1.0));
+        let mut builder = TariffBuilder::default();
+        builder.daily_supply(dec!(1.0));
+        builder.consumption_period(Some(ConsumptionPeriod::Day));
         builder
             .rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(12))])
                     .time_band(HourMinute::min(), HourMinute::max(), None)
             })
             .unwrap();
-        let builder = builder.consumption_period(Some(ConsumptionPeriod::Day));
         let tariff = builder.build().unwrap();
 
         let smart_meter = generate_smart_meter(
@@ -437,9 +440,10 @@ mod tests {
 
     #[test]
     fn test_multiflat_monthly() {
-        let mut builder = TariffBuilder::default()
-            .daily_supply(dec!(1.0))
-            .consumption_period(Some(ConsumptionPeriod::Month));
+        let mut builder = TariffBuilder::default();
+        builder.consumption_period(Some(ConsumptionPeriod::Month));
+        builder.daily_supply(dec!(1.0));
+
         builder
             .rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(0.4), dec!(200))])
@@ -506,9 +510,10 @@ mod tests {
         });
         let pricing_input = priced(&smart_meter, SYDNEY);
 
-        let mut builder = TariffBuilder::default()
-            .daily_supply(dec!(1.0))
-            .consumption_period(Some(ConsumptionPeriod::Day));
+        let mut builder = TariffBuilder::default();
+        builder.consumption_period(Some(ConsumptionPeriod::Day));
+        builder.daily_supply(dec!(1.0));
+
         builder
             .rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])
@@ -533,7 +538,8 @@ mod tests {
         });
         let pricing_input = priced(&smart_meter, SYDNEY);
 
-        let mut builder = TariffBuilder::default().daily_supply(dec!(1.0));
+        let mut builder = TariffBuilder::default();
+        builder.daily_supply(dec!(1.0));
         builder
             .rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])
@@ -588,9 +594,10 @@ mod tests {
         });
         let pricing_input = priced(&smart_meter, SYDNEY);
 
-        let mut builder = TariffBuilder::default()
-            .daily_supply(dec!(1.0))
-            .consumption_period(Some(ConsumptionPeriod::Day));
+        let mut builder = TariffBuilder::default();
+        builder.consumption_period(Some(ConsumptionPeriod::Day));
+        builder.daily_supply(dec!(1.0));
+
         builder
             .rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])
@@ -615,7 +622,8 @@ mod tests {
         });
         let pricing_input = priced(&smart_meter, SYDNEY);
 
-        let mut builder = TariffBuilder::default().daily_supply(dec!(1.0));
+        let mut builder = TariffBuilder::default();
+        builder.daily_supply(dec!(1.0));
         builder
             .rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(dec!(0.2), dec!(0)), (dec!(1), dec!(10))])

@@ -143,9 +143,9 @@ impl PlanContract {
         }
 
         let supply_rate = self.aggregate_supply_rate()?;
-        let mut builder = TariffBuilder::default()
-            .daily_supply(supply_rate)
-            .consumption_period(self.aggregate_comsuption_period()?);
+        let mut builder = TariffBuilder::default();
+        builder.consumption_period(self.aggregate_comsuption_period()?);
+        builder.daily_supply(supply_rate);
 
         for period in &self.tariff_period {
             period.build_season(&mut builder)?;

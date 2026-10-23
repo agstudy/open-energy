@@ -529,16 +529,12 @@ pub struct TariffBuilder {
 }
 
 impl TariffBuilder {
-    #[must_use]
-    pub fn consumption_period(mut self, cons_period: Option<ConsumptionPeriod>) -> Self {
+    pub fn consumption_period(&mut self, cons_period: Option<ConsumptionPeriod>) {
         self.cons_period = cons_period;
-        self
     }
 
-    #[must_use]
-    pub fn daily_supply(mut self, rate: Decimal) -> Self {
+    pub fn daily_supply(&mut self, rate: Decimal) {
         self.supply_rate = rate;
-        self
     }
 
     fn season_mut_or_insert(
@@ -708,7 +704,8 @@ mod tests {
 
     #[test]
     fn test_multi_tiers_success() {
-        let mut builder = TariffBuilder::default().daily_supply(dec!(0.1));
+        let mut builder = TariffBuilder::default();
+        builder.daily_supply(dec!(0.1));
         builder
             .rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(dec!(0.1), dec!(0)), (dec!(0.2), dec!(1000))])
@@ -729,7 +726,8 @@ mod tests {
 
     #[test]
     fn test_threshold_tiers() {
-        let mut builder = TariffBuilder::default().daily_supply(dec!(0.2));
+        let mut builder = TariffBuilder::default();
+        builder.daily_supply(dec!(0.2));
         builder
             .rate_period(SeasonRange::full_year(), |b| {
                 b.rates(&[(dec!(0.1), dec!(1000))]).time_band(

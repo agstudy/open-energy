@@ -29,7 +29,8 @@ impl TariffFactory {
     ///
     ///
     pub fn flat(flat_rate: Decimal, supply_rate: Decimal) -> Result<Tariff, TariffError> {
-        let mut builder = TariffBuilder::default().daily_supply(supply_rate);
+        let mut builder = TariffBuilder::default();
+        builder.daily_supply(supply_rate);
         builder.rate_period(SeasonRange::full_year(), |s| {
             s.rates(&[(flat_rate, dec!(0))])
                 .time_band(HourMinute::min(), HourMinute::max(), None)
@@ -49,9 +50,9 @@ impl TariffFactory {
         supply_rate: Decimal,
         cons_period: Option<ConsumptionPeriod>,
     ) -> Result<TariffBuilder, TariffError> {
-        let mut builder = TariffBuilder::default()
-            .consumption_period(cons_period)
-            .daily_supply(supply_rate);
+        let mut builder = TariffBuilder::default();
+        builder.consumption_period(cons_period);
+        builder.daily_supply(supply_rate);
 
         builder.rate_period(SeasonRange::full_year(), |s| {
             s.rates(blocks)
@@ -72,7 +73,8 @@ impl TariffFactory {
         supply_rate: Decimal,
         export_rate: Decimal,
     ) -> Result<Tariff, TariffError> {
-        let mut builder = TariffBuilder::default().daily_supply(supply_rate);
+        let mut builder = TariffBuilder::default();
+        builder.daily_supply(supply_rate);
         builder.rate_period(SeasonRange::full_year(), |s| {
             s.rates(&[(flat_rate, dec!(0))])
                 .time_band(HourMinute::min(), HourMinute::max(), None)
@@ -96,7 +98,8 @@ impl TariffFactory {
         off_peak: &Window,
         supply_rate: Decimal,
     ) -> Result<Tariff, TariffError> {
-        let mut builder = TariffBuilder::default().daily_supply(supply_rate);
+        let mut builder = TariffBuilder::default();
+        builder.daily_supply(supply_rate);
 
         // Off-peak runs from off_peak.start until peak begins (may cross midnight).
         for (start, end) in off_peak.start.split_midnight(peak.start.prev()) {
@@ -127,9 +130,9 @@ impl TariffFactory {
         off_peak: &WindowTiered,
         supply_rate: Decimal,
     ) -> Result<Tariff, TariffError> {
-        let mut builder = TariffBuilder::default()
-            .daily_supply(supply_rate)
-            .consumption_period(Some(ConsumptionPeriod::Day));
+        let mut builder = TariffBuilder::default();
+        builder.consumption_period(Some(ConsumptionPeriod::Day));
+        builder.daily_supply(supply_rate);
 
         // Off-peak runs from off_peak.start until peak begins (may cross midnight).
         for (start, end) in off_peak.start.split_midnight(peak.start.prev()) {

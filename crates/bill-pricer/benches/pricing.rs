@@ -20,9 +20,10 @@ fn generate_tariff() -> Tariff {
     let hm_offpeak_2100 = HourMinute::new_unchecked(21, 0);
     let hm_offpeak_2359 = HourMinute::new_unchecked(23, 59);
 
-    let mut builder = TariffBuilder::default()
-        .daily_supply(dec!(1.0))
-        .consumption_period(Some(ConsumptionPeriod::Day));
+    let mut builder = TariffBuilder::default();
+    builder.consumption_period(Some(ConsumptionPeriod::Day));
+    builder.daily_supply(dec!(1.0));
+
     builder
         .rate_period(SeasonRange::full_year(), |s| {
             s.rates(&[(dec!(0.2), dec!(0)), (dec!(0.4), dec!(10))])

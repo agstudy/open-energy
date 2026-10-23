@@ -148,7 +148,7 @@ impl PeriodTariff {
         Ok(())
     }
 
-    /// Creates touseason tariff rates
+    /// Creates tou season tariff rates
     ///
     /// # Errors
     ///
