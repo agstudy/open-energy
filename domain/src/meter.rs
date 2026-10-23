@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashSet};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 
-use crate::hour_minute::HourMinute;
+use crate::{hour_minute::HourMinute, year_month::MonthDay};
 #[derive(Debug, Clone)]
 pub struct MeterMeasure {
     pub utc_start: DateTime<Utc>,
@@ -29,6 +29,7 @@ impl MeterMeasure {
         LocalMeasure {
             date: local.date_naive(),
             hour_minute: HourMinute::new_unchecked(local.hour(), local.minute()),
+            month_day: MonthDay::new_unchecked(local.month(), local.day()),
             weekday: local.weekday(),
             datetime: local,
         }
@@ -39,6 +40,7 @@ impl MeterMeasure {
 pub struct LocalMeasure {
     pub date: NaiveDate,
     pub hour_minute: HourMinute,
+    pub month_day: MonthDay,
     pub weekday: Weekday,
     pub datetime: DateTime<Tz>,
 }

@@ -4,7 +4,7 @@ use bill_pricer::{
 };
 use chrono_tz::Tz;
 use criterion::{Criterion, criterion_group, criterion_main};
-use domain::{HourMinute, meter::PricingInput};
+use domain::{HourMinute, meter::PricingInput, year_month::SeasonRange};
 use gen_meter::generator::{GeneratorConfig, generate_smart_meter};
 use rust_decimal_macros::dec;
 use std::hint::black_box;
@@ -20,31 +20,32 @@ fn generate_tariff() -> Tariff {
     let hm_offpeak_2100 = HourMinute::new_unchecked(21, 0);
     let hm_offpeak_2359 = HourMinute::new_unchecked(23, 59);
 
-    let mut builder = TariffBuilder::default()
-        .daily_supply(dec!(1.0))
-        .consumption_period(Some(ConsumptionPeriod::Day));
+    let mut builder = TariffBuilder::default();
+    builder.consumption_period(Some(ConsumptionPeriod::Day));
+    builder.daily_supply(dec!(1.0));
+
     builder
-        .rate_period(|s| {
+        .rate_period(SeasonRange::full_year(), |s| {
             s.rates(&[(dec!(0.2), dec!(0)), (dec!(0.4), dec!(10))])
                 .time_band(midnight, hm_off_peak_1759, None)
         })
         .unwrap();
 
     builder
-        .rate_period(|s| {
+        .rate_period(SeasonRange::full_year(), |s| {
             s.rates(&[(dec!(0.4), dec!(0)), (dec!(0.6), dec!(10))])
                 .time_band(hm_peak_1800, hm_peak_2059, None)
         })
         .unwrap();
     builder
-        .rate_period(|s| {
+        .rate_period(SeasonRange::full_year(), |s| {
             s.rates(&[(dec!(0.2), dec!(0)), (dec!(0.4), dec!(10))])
                 .time_band(hm_offpeak_2100, hm_offpeak_2359, None)
         })
         .unwrap();
 
     builder
-        .export_rate_period(|s| {
+        .export_rate_period(SeasonRange::full_year(), |s| {
             s.rates(&[(dec!(0.05), dec!(0))])
                 .time_band(HourMinute::min(), HourMinute::max(), None)
         })

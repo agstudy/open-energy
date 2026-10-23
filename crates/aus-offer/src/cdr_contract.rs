@@ -3,8 +3,11 @@ use std::{
     hash::Hash,
 };
 
-use bill_pricer::tariff::{Tariff, TariffBuilder, TariffError};
-use domain::hour_minute::{END_OF_DAY, START_OF_DAY};
+use bill_pricer::tariff::{ConsumptionPeriod, Tariff, TariffBuilder, TariffError};
+use domain::{
+    hour_minute::{END_OF_DAY, START_OF_DAY},
+    year_month::SeasonRange,
+};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
@@ -13,7 +16,7 @@ use crate::{
     cdr_domain::{TariffUType, TimeZone, all_starts, block_rates},
     cdr_eligibility::PlanEligibility,
     cdr_solar::{PayerType, SolarScheme, SolarTariff},
-    cdr_tariff::{PeriodTariff, PeriodTariffError},
+    cdr_tariff::{PeriodTariff, PeriodTariffError, RateBlockUType, get_consumption_period},
 };
 
 /// The pricing model for the contract. Contracts for gas must use `SINGLE_RATE`. Note that the detail for the enumeration values are:<ul><li>`SINGLE_RATE`: all energy usage is charged at a single unit rate no matter when it is consumed. Multiple unit rates may exist that correspond to varying volumes of usage i.e. a 'block' or 'step' tariff (first 50kWh @ X cents, next 50kWh at Y cents etc.)</li><li>`SINGLE_RATE_CONT_LOAD`: as above, but with an additional, separate unit rate charged for all energy usage from a controlled load i.e. separately metered appliance like hot water service, pool pump etc.</li><li>`TIME_OF_USE`: energy usage is charged at unit rates that vary dependent on time of day and day of week that the energy is consumed</li><li>`TIME_OF_USE_CONT_LOAD`: as above, but with an additional, separate unit rate charged for all energy usage from a controlled load i.e. separately metered appliance like hot water service, pool pump etc.</li><li>`FLEXIBLE`: energy usage is charged at unit rates that vary based on external factors</li><li>`FLEXIBLE_CONT_LOAD`: as above, but with an additional, separate unit rate charged for all energy usage from a controlled load i.e. separately metered appliance like hot water service, pool pump etc.</li><li>`QUOTA`: all energy usage is charged at a single fixed rate, up to a specified usage quota/allowance. All excess usage beyond the allowance is then charged at a single unit rate. i.e. $50/month for up to 150kWh included usage.</li></ul>
@@ -34,7 +37,7 @@ pub enum PricingModel {
     #[serde(rename = "QUOTA")]
     Quota,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum BasePricingModel {
     SingleRate,
     TimeOfUse,
@@ -97,6 +100,24 @@ pub struct PlanContract {
     pub tariff_period: Vec<PeriodTariff>,
 }
 
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq, Hash)]
+pub enum UnsupportedReason {
+    #[error("pricing model")]
+    Pricing(PricingModel),
+    #[error("Solar variante (multi choices) not supported")]
+    SolarMultiOptions,
+    #[error("Solar model not supported")]
+    SolarMultiFlatTou,
+    #[error("model gap tariff malformed")]
+    SolarGap,
+    #[error("other solar model like seasonal unsupported")]
+    SolarSeasonal,
+    #[error("empty or multiple supply rates {0:?}")]
+    NotSingleSupplyRate(usize),
+    #[error("demand pricing model not yet implemented")]
+    DemandCharges,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ParseContractError {
     #[error("tariff: {0}")]
@@ -105,24 +126,8 @@ pub enum ParseContractError {
     #[error("pricing model {0:?} is not implemented yet")]
     NotImplemented(PricingModel),
 
-    #[error("solar multioptions is unsupported")]
-    UnsupportedMultipleOptions,
-
-    #[error("solar tou multiflat is unsupported")]
-    UnsupportedTouMultiflat,
-
-    #[error("solar gap: tariff malformed")]
-    UnsupportedGap,
-
-    #[error("solar unsupported")]
-    UnsupportedSolar,
-}
-
-pub struct PlanTariff {
-    // each leg is a season
-    pub import: Vec<Tariff>,
-    // solar have multiple schema generally only one is used in real pricing (current or other)
-    pub export: HashMap<(SolarScheme, PayerType), Tariff>,
+    #[error(transparent)]
+    Unsupported(#[from] UnsupportedReason),
 }
 
 impl PlanContract {
@@ -132,36 +137,63 @@ impl PlanContract {
     ///
     /// Returns [`ParseContractError`] if the contract data is malformed, e.g.
     /// missing required fields or an unrecognised tariff structure.
-    pub fn build_tariff(&self) -> Result<PlanTariff, ParseContractError> {
+    pub fn build_tariff(&self) -> Result<Tariff, ParseContractError> {
         if self.pricing_model.base() == BasePricingModel::Quota {
             return Err(ParseContractError::NotImplemented(PricingModel::Quota));
         }
-        Ok(PlanTariff {
-            import: self.build_import_tariffs()?,
-            export: self.build_export_tariffs()?,
-        })
+
+        let supply_rate = self.aggregate_supply_rate()?;
+        let mut builder = TariffBuilder::default();
+        builder.consumption_period(self.aggregate_comsuption_period()?);
+        builder.daily_supply(supply_rate);
+
+        for period in &self.tariff_period {
+            period.build_season(&mut builder)?;
+        }
+        self.build_export_tariffs(&mut builder)?;
+
+        match builder.build() {
+            Ok(t) => Ok(t),
+            Err(TariffError::Overlap(..)) => Err(ParseContractError::Unsupported(
+                UnsupportedReason::SolarMultiOptions,
+            )),
+            Err(TariffError::Gap(..)) => {
+                Err(ParseContractError::Unsupported(UnsupportedReason::SolarGap))
+            }
+            Err(e) => Err(PeriodTariffError::from(e).into()),
+        }
     }
 
-    /// Builds one import [`Tariff`] per tariff period described by the contract.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ParseContractError::ParseTariff`] if any tariff period fails to
-    /// parse or its bands fail validation (gap, overlap, tier order, or an
-    /// invalid time band).
-    pub fn build_import_tariffs(&self) -> Result<Vec<Tariff>, ParseContractError> {
-        let builders = self
-            .tariff_period
-            .iter()
-            .map(PeriodTariff::builder)
-            .collect::<Result<Vec<_>, _>>()?;
+    fn aggregate_supply_rate(&self) -> Result<Decimal, ParseContractError> {
+        let mut supply_set = HashSet::new();
+        let mut supply_rate = Decimal::ZERO;
+        for period in &self.tariff_period {
+            if period.rate_block_u_type == RateBlockUType::DemandCharges {
+                let reason = UnsupportedReason::DemandCharges;
+                return Err(ParseContractError::Unsupported(reason));
+            }
+            supply_rate = period.get_supply_rate()?;
+            supply_set.insert(supply_rate);
+        }
+        if supply_set.len() != 1 {
+            let reason = UnsupportedReason::NotSingleSupplyRate(supply_set.len());
+            return Err(ParseContractError::Unsupported(reason));
+        }
 
-        let tariffs = builders
-            .into_iter()
-            .map(TariffBuilder::build)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(PeriodTariffError::from)?;
-        Ok(tariffs)
+        Ok(supply_rate)
+    }
+
+    //NOTE!  we override consumption period if ther are different
+    fn aggregate_comsuption_period(&self) -> Result<Option<ConsumptionPeriod>, ParseContractError> {
+        let mut period_cons: Option<ConsumptionPeriod> = None;
+        for period in &self.tariff_period {
+            if period.rate_block_u_type == RateBlockUType::SingleRates {
+                let single = period.get_single()?;
+                period_cons = get_consumption_period(single.reset_period.as_ref());
+            }
+        }
+
+        Ok(period_cons)
     }
 
     /// Builds one export [`Tariff`] per `(scheme, payer)` pair, combining all
@@ -174,8 +206,9 @@ impl PlanContract {
     /// combined bands fail validation.
     pub fn build_export_tariffs(
         &self,
+        builder: &mut TariffBuilder,
     ) -> Result<HashMap<(SolarScheme, PayerType), Tariff>, ParseContractError> {
-        let mut solar_map: HashMap<(SolarScheme, PayerType), Tariff> = HashMap::new();
+        let solar_map: HashMap<(SolarScheme, PayerType), Tariff> = HashMap::new();
 
         let mut by_key: HashMap<(SolarScheme, PayerType, TariffUType), Vec<&SolarTariff>> =
             HashMap::new();
@@ -190,32 +223,15 @@ impl PlanContract {
                 }
             }
 
-            for ((scheme, payer, tariff_type), feeds) in by_key {
-                let mut builder = TariffBuilder::default();
+            for ((_, _, tariff_type), feeds) in by_key {
                 match tariff_type {
                     TariffUType::SingleTariff => {
-                        /* all feeds here are SingleTariff */
-                        Self::build_solar_single_tariff(&feeds, &mut builder)?;
+                        Self::build_solar_single_tariff(&feeds, builder)?;
                     }
                     TariffUType::TimeOfUseTariff => {
-                        /* all feeds here are TimeOfUseTariff */
-
                         let starts = Self::get_all_starts(&feeds);
-                        Self::build_solar_tou_tariff(&feeds, &mut builder, &starts)?;
+                        Self::build_solar_tou_tariff(&feeds, builder, &starts)?;
                     }
-                }
-
-                match builder.build() {
-                    Ok(t) => {
-                        solar_map.insert((scheme, payer), t);
-                    }
-                    Err(TariffError::Overlap(..)) => {
-                        return Err(ParseContractError::UnsupportedMultipleOptions);
-                    }
-                    Err(TariffError::Gap(..)) => {
-                        return Err(ParseContractError::UnsupportedGap);
-                    }
-                    Err(e) => return Err(PeriodTariffError::from(e).into()),
                 }
             }
         }
@@ -238,10 +254,12 @@ impl PlanContract {
                         .map_err(PeriodTariffError::from)?
                     {
                         if blocks.iter().any(|(_, v)| *v > Decimal::ZERO) {
-                            return Err(ParseContractError::UnsupportedTouMultiflat);
+                            return Err(ParseContractError::Unsupported(
+                                UnsupportedReason::SolarMultiFlatTou,
+                            ));
                         }
 
-                        builder.add_export_rate_period(&blocks, tb);
+                        builder.add_export_rate_period(SeasonRange::full_year(), &blocks, tb);
                     }
                 }
             }
@@ -266,11 +284,13 @@ impl PlanContract {
                 .iter()
                 .all(|v| v.volume.unwrap_or(Decimal::ZERO) == Decimal::ZERO)
         {
-            return Err(ParseContractError::UnsupportedSolar);
+            return Err(ParseContractError::Unsupported(
+                UnsupportedReason::SolarSeasonal,
+            ));
         }
 
         builder
-            .export_rate_period(|s| {
+            .export_rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&block_rates(rates))
                     .time_band(START_OF_DAY, END_OF_DAY, None)
             })

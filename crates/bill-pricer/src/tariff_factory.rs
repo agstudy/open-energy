@@ -1,4 +1,5 @@
 use domain::HourMinute;
+use domain::year_month::SeasonRange;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 
@@ -28,8 +29,9 @@ impl TariffFactory {
     ///
     ///
     pub fn flat(flat_rate: Decimal, supply_rate: Decimal) -> Result<Tariff, TariffError> {
-        let mut builder = TariffBuilder::default().daily_supply(supply_rate);
-        builder.rate_period(|s| {
+        let mut builder = TariffBuilder::default();
+        builder.daily_supply(supply_rate);
+        builder.rate_period(SeasonRange::full_year(), |s| {
             s.rates(&[(flat_rate, dec!(0))])
                 .time_band(HourMinute::min(), HourMinute::max(), None)
         })?;
@@ -48,11 +50,11 @@ impl TariffFactory {
         supply_rate: Decimal,
         cons_period: Option<ConsumptionPeriod>,
     ) -> Result<TariffBuilder, TariffError> {
-        let mut builder = TariffBuilder::default()
-            .consumption_period(cons_period)
-            .daily_supply(supply_rate);
+        let mut builder = TariffBuilder::default();
+        builder.consumption_period(cons_period);
+        builder.daily_supply(supply_rate);
 
-        builder.rate_period(|s| {
+        builder.rate_period(SeasonRange::full_year(), |s| {
             s.rates(blocks)
                 .time_band(HourMinute::min(), HourMinute::max(), None)
         })?;
@@ -71,12 +73,13 @@ impl TariffFactory {
         supply_rate: Decimal,
         export_rate: Decimal,
     ) -> Result<Tariff, TariffError> {
-        let mut builder = TariffBuilder::default().daily_supply(supply_rate);
-        builder.rate_period(|s| {
+        let mut builder = TariffBuilder::default();
+        builder.daily_supply(supply_rate);
+        builder.rate_period(SeasonRange::full_year(), |s| {
             s.rates(&[(flat_rate, dec!(0))])
                 .time_band(HourMinute::min(), HourMinute::max(), None)
         })?;
-        builder.export_rate_period(|s| {
+        builder.export_rate_period(SeasonRange::full_year(), |s| {
             s.rates(&[(export_rate, dec!(0))])
                 .time_band(HourMinute::min(), HourMinute::max(), None)
         })?;
@@ -95,19 +98,21 @@ impl TariffFactory {
         off_peak: &Window,
         supply_rate: Decimal,
     ) -> Result<Tariff, TariffError> {
-        let mut builder = TariffBuilder::default().daily_supply(supply_rate);
+        let mut builder = TariffBuilder::default();
+        builder.daily_supply(supply_rate);
 
         // Off-peak runs from off_peak.start until peak begins (may cross midnight).
         for (start, end) in off_peak.start.split_midnight(peak.start.prev()) {
-            builder.rate_period(|s| {
+            builder.rate_period(SeasonRange::full_year(), |s| {
                 s.rates(&[(off_peak.rate, dec!(0))])
                     .time_band(start, end, None)
             })?;
         }
         // Peak runs from peak.start until off-peak resumes (may cross midnight).
         for (start, end) in peak.start.split_midnight(off_peak.start.prev()) {
-            builder
-                .rate_period(|s| s.rates(&[(peak.rate, dec!(0))]).time_band(start, end, None))?;
+            builder.rate_period(SeasonRange::full_year(), |s| {
+                s.rates(&[(peak.rate, dec!(0))]).time_band(start, end, None)
+            })?;
         }
 
         builder.build()
@@ -125,17 +130,21 @@ impl TariffFactory {
         off_peak: &WindowTiered,
         supply_rate: Decimal,
     ) -> Result<Tariff, TariffError> {
-        let mut builder = TariffBuilder::default()
-            .daily_supply(supply_rate)
-            .consumption_period(Some(ConsumptionPeriod::Day));
+        let mut builder = TariffBuilder::default();
+        builder.consumption_period(Some(ConsumptionPeriod::Day));
+        builder.daily_supply(supply_rate);
 
         // Off-peak runs from off_peak.start until peak begins (may cross midnight).
         for (start, end) in off_peak.start.split_midnight(peak.start.prev()) {
-            builder.rate_period(|s| s.rates(&off_peak.rates).time_band(start, end, None))?;
+            builder.rate_period(SeasonRange::full_year(), |s| {
+                s.rates(&off_peak.rates).time_band(start, end, None)
+            })?;
         }
         // Peak runs from peak.start until off-peak resumes (may cross midnight).
         for (start, end) in peak.start.split_midnight(off_peak.start.prev()) {
-            builder.rate_period(|s| s.rates(&peak.rates).time_band(start, end, None))?;
+            builder.rate_period(SeasonRange::full_year(), |s| {
+                s.rates(&peak.rates).time_band(start, end, None)
+            })?;
         }
 
         builder.build()
@@ -154,7 +163,8 @@ mod tests {
         let actual = serde_json::to_string_pretty(&flat_tariff).unwrap();
 
         let expected = r#"{
-  "import": [
+        "import":[{
+  "periods": [
     {
       "rates": [
         {
@@ -163,19 +173,18 @@ mod tests {
         }
       ],
       "time_band": {
-        "start": {
-          "hour": 0,
-          "minute": 0
-        },
-        "end": {
-          "hour": 23,
-          "minute": 59
-        },
+        "start": "00:00",
+        "end": "23:59",
         "days_of_week": null
       }
     }
   ],
-  "export": null,
+              "season": {
+                "start_date": "01-01",
+                "end_date": "12-31"
+                }
+            }],
+  "export": [],
   "discount": null,
   "supply_rate": "1.0",
   "cons_period": null
@@ -189,33 +198,36 @@ mod tests {
     #[test]
     fn test_deserialize_flat_tariff() {
         use serde_json::json;
-        let flat_json = json!(
-          {"import": [
-            {
-              "rates": [
-                {
-                  "rate": "0.1",
-                  "lower_band": "0.0"
-                }
-              ],
-              "time_band": {
-                "start": {
-                  "hour": 0,
-                  "minute": 0
-                },
-                "end": {
-                  "hour": 23,
-                  "minute": 59
-                },
-                "days_of_week": null
-              }
-            }
-          ],
-          "export": null,
-          "discount": null,
-          "supply_rate": "1.0",
-          "cons_period": null,
-        });
+        let flat_json = json!({
+             "import": [
+               {
+                 "periods": [
+                   {
+                     "rates": [
+                       {
+                         "rate": "0.1",
+                         "lower_band": "0"
+                       }
+                     ],
+                     "time_band": {
+        "start": "00:00",
+           "end": "23:59",
+           "days_of_week": null
+                     }
+                   }
+                 ],
+                 "season": {
+                   "start_date": "01-01",
+                   "end_date": "12-31"
+                   }
+               }
+             ],
+             "export": [],
+             "discount": null,
+             "supply_rate": "1.0",
+             "cons_period": null
+           });
+
         let actual: Tariff = serde_json::from_value(flat_json).unwrap();
         assert_eq!(actual, TariffFactory::flat(dec!(0.1), dec!(1.0)).unwrap());
     }
