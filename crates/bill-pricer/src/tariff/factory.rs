@@ -19,7 +19,8 @@ pub struct WindowTiered {
     pub rates: Vec<(Decimal, Decimal)>,
     pub start: HourMinute,
 }
-
+/// This factory is to create some usual and easy tariff
+/// Use the builder for any serious case
 impl TariffFactory {
     /// Builds a falt tariff with the given flat rate and daily supply rate.
     ///
