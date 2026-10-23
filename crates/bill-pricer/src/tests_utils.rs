@@ -7,10 +7,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use std::str::FromStr;
 
-use crate::{
-    tariff::{Tariff, TariffError},
-    tariff_factory::{TariffFactory, Window},
-};
+use crate::tariff::{Tariff, TariffError, TariffFactory, Window};
 #[must_use]
 #[allow(clippy::missing_panics_doc)]
 pub fn utc_from_local(local: NaiveDateTime, tz_str: &str) -> DateTime<Utc> {

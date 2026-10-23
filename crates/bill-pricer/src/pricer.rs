@@ -145,7 +145,7 @@ mod tests {
     use crate::{
         TimeBand, WeekDays,
         tariff::{TariffBuilder, TariffError},
-        tariff_factory::{TariffFactory, Window, WindowTiered},
+        tariff::{TariffFactory, Window, WindowTiered},
         tests_utils::{get_tou_tariff, str_to_native_date, str_to_native_datetime, utc_from_local},
     };
 
