@@ -314,7 +314,7 @@ impl Tariff {
     }
 
     #[must_use]
-    pub fn import_tariff(&self) -> &[TariffSeason] {
+    pub fn import_tariff(&self) -> &Vec<TariffSeason> {
         &self.import
     }
 

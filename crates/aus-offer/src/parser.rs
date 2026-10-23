@@ -34,7 +34,6 @@ pub struct OfferCategory {
     pub model: BasePricingModel,
     pub has_controlled_load: bool,
     pub has_solar: bool,
-    pub season_solar: usize,
 }
 
 pub enum FileOutcome {
@@ -58,18 +57,14 @@ pub fn parse_offer_file(path: &Path) -> FileOutcome {
     let pricing_model = res.data.electricity_contract.pricing_model.clone();
     match res.data.electricity_contract.build_tariff() {
         Ok(pt) => FileOutcome::Converted(OfferCategory {
-            season: pt.import.len(),
+            season: pt.import_tariff().len(),
             model: pricing_model.base(),
             has_controlled_load: pricing_model.has_controlled_load(),
-            has_solar: !pt.export.is_empty(),
-            season_solar: pt.export.len(),
+            has_solar: !pt.export_tariff().is_empty(),
         }),
         Err(e) => match e {
             ParseContractError::NotImplemented(p) => {
                 FileOutcome::Unsupported(UnsupportedReason::Pricing(p))
-            }
-            ParseContractError::ParseTariff(PeriodTariffError::NotImplemented(bt)) => {
-                FileOutcome::Unsupported(UnsupportedReason::BlockType(bt))
             }
             ParseContractError::ParseTariff(other) => {
                 FileOutcome::Failed(FailureReason::Tariff(other))
@@ -159,7 +154,7 @@ impl ParseStats {
 
     #[must_use]
     pub fn with_solar(&self) -> BTreeMap<(BasePricingModel, usize), usize> {
-        self.aggregate(|c| (c.model, c.season_solar), |x| x.has_solar)
+        self.aggregate(|c| (c.model, c.season), |x| x.has_solar)
     }
     #[must_use]
     pub fn with_controlled_load(&self) -> BTreeMap<(BasePricingModel, usize), usize> {

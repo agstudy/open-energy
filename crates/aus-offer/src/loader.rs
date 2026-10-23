@@ -208,10 +208,7 @@ mod tests {
     use rust_decimal_macros::dec;
     use std::str::FromStr;
 
-    use crate::{
-        cdr_contract::UnsupportedReason,
-        cdr_solar::{PayerType, SolarScheme},
-    };
+    use crate::cdr_contract::UnsupportedReason;
 
     use super::*;
     fn priced(meter: &[MeterMeasure], zone: &str) -> PricingInput {
@@ -222,31 +219,15 @@ mod tests {
         Tz::from_str(name).unwrap()
     }
 
-    fn get_tariffs(json: &str) -> Vec<Tariff> {
+    fn get_tariff(json: &str) -> Tariff {
         let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
-        offer
-            .data
-            .electricity_contract
-            .build_tariff()
-            .unwrap()
-            .import
-    }
-
-    fn get_export_tariffs(json: &str) -> HashMap<(SolarScheme, PayerType), Tariff> {
-        let offer = serde_json::from_str::<PlanDetailResponse>(json).unwrap();
-        offer
-            .data
-            .electricity_contract
-            .build_tariff()
-            .unwrap()
-            .export
+        offer.data.electricity_contract.build_tariff().unwrap()
     }
 
     #[test]
     fn parses_origin_multiflat_vic_offer() {
-        let tariffs = get_tariffs(include_str!("../data/flat/OR2810912MS@VEC.json"));
-        assert_eq!(tariffs.len(), 1);
-        let tariff = tariffs.first().unwrap();
+        let tariff = get_tariff(include_str!("../data/flat/OR2810912MS@VEC.json"));
+        assert_eq!(tariff.import_tariff().len(), 1);
         assert_eq!(tariff.supply_rate(), Decimal::try_from(1.0939).unwrap());
         assert_eq!(tariff.consumption_period(), Some(ConsumptionPeriod::Day));
 
@@ -265,16 +246,15 @@ mod tests {
         let pricing_input = priced(&smart_meter, "Australia/Sydney");
 
         assert_eq!(
-            price(tariff, &pricing_input).unwrap().total_bill,
+            price(&tariff, &pricing_input).unwrap().total_bill,
             dec!(8.04)
         );
     }
 
     #[test]
     fn parses_tou_overlapp_tariff() {
-        let tariffs = get_tariffs(include_str!("../data/tou/1ST764143MS@VEC.json"));
-        assert_eq!(tariffs.len(), 1);
-        let tariff = tariffs.first().unwrap();
+        let tariff = get_tariff(include_str!("../data/tou/1ST764143MS@VEC.json"));
+        assert_eq!(tariff.import_tariff().len(), 1);
 
         assert_eq!(tariff.supply_rate(), Decimal::try_from(1.498).unwrap());
         assert_eq!(tariff.consumption_period(), None);
@@ -298,20 +278,16 @@ mod tests {
 
     #[test]
     fn parses_tou_start_bigger_end_tariff() {
-        let tariffs = get_tariffs(include_str!("../data/tou/RED552217MBE13@EME.json"));
-        assert_eq!(tariffs.len(), 1);
-        let tariff = tariffs.first().unwrap();
+        let tariff = get_tariff(include_str!("../data/tou/RED552217MBE13@EME.json"));
+        assert_eq!(tariff.import_tariff().len(), 1);
         assert_eq!(tariff.supply_rate(), Decimal::try_from(1.30).unwrap());
         assert_eq!(tariff.consumption_period(), None);
     }
 
     #[test]
     fn parses_solar_single_rate() {
-        let tariffs = get_export_tariffs(include_str!("../data/flat/OR2810912MS@VEC.json"));
+        let tariff = get_tariff(include_str!("../data/flat/OR2810912MS@VEC.json"));
 
-        let tariff = tariffs
-            .get(&(SolarScheme::Current, PayerType::Retailer))
-            .unwrap();
         assert!(
             !tariff.export_tariff().is_empty(),
             "expected an export tariff for this plan"
@@ -345,10 +321,7 @@ mod tests {
 
     #[test]
     fn parses_solar_multiflat() {
-        let tariffs = get_export_tariffs(include_str!("../data/1ST1122747MBE1@EME.json"));
-        let tariff = tariffs
-            .get(&(SolarScheme::Other, PayerType::Retailer))
-            .unwrap();
+        let tariff = get_tariff(include_str!("../data/1ST1122747MBE1@EME.json"));
 
         assert!(
             !tariff.export_tariff().is_empty(),

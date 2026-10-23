@@ -1,8 +1,8 @@
-use bill_pricer::{
-    tariff::{ConsumptionPeriod, TariffBuilder, TariffError},
-    tariff_factory::TariffFactory,
+use bill_pricer::tariff::{ConsumptionPeriod, TariffBuilder, TariffError};
+use domain::{
+    hour_minute::{END_OF_DAY, START_OF_DAY},
+    year_month::{MonthDay, SeasonRange},
 };
-use domain::year_month::{MonthDay, SeasonRange};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
@@ -79,9 +79,6 @@ pub enum PeriodTariffError {
     #[error("Missing field : {0}")]
     MissingField(&'static str),
 
-    #[error("no implemented tariff block type: {0:?}")]
-    NotImplemented(RateBlockUType),
-
     #[error("unsupported band supply")]
     UnsupportedBandSupply,
 
@@ -104,16 +101,14 @@ impl PeriodTariff {
     /// (e.g. [`PeriodTariffError::Tariff`] from `TariffFactory`,
     /// [`PeriodTariffError::UnsupportedBandSupply`], or
     /// [`PeriodTariffError::TimeBandError`]).
-    pub fn builder(&self) -> Result<TariffBuilder, PeriodTariffError> {
+    pub fn build_season(&self, builder: &mut TariffBuilder) -> Result<(), PeriodTariffError> {
         match self.rate_block_u_type {
-            RateBlockUType::SingleRates => self.single_rate_builder(),
-            RateBlockUType::TimeOfUseRates => self.time_of_use_builder(),
-            RateBlockUType::DemandCharges => Err(PeriodTariffError::NotImplemented(
-                RateBlockUType::DemandCharges,
-            )),
+            RateBlockUType::SingleRates => self.build_season_single_rates(builder),
+            RateBlockUType::TimeOfUseRates => self.build_season_tou_rates(builder),
+            RateBlockUType::DemandCharges => Ok(()),
         }
     }
-    fn get_supply_rate(&self) -> Result<Decimal, PeriodTariffError> {
+    pub fn get_supply_rate(&self) -> Result<Decimal, PeriodTariffError> {
         if self
             .daily_supply_charge_type
             .as_ref()
@@ -126,34 +121,46 @@ impl PeriodTariff {
             .ok_or(PeriodTariffError::MissingField("dailySupplyCharge"))
     }
 
-    /// Creates a builder for a single-rate tariff.
+    /// Creates single-rate season tariff rates
     ///
     /// # Errors
     ///
     /// Returns [`PeriodTariffError`] if the tariff's period definition is invalid
     /// or inconsistent with a single-rate structure.
-    pub fn single_rate_builder(&self) -> Result<TariffBuilder, PeriodTariffError> {
+    pub fn build_season_single_rates(
+        &self,
+        builder: &mut TariffBuilder,
+    ) -> Result<(), PeriodTariffError> {
         let single = self
             .single_rate
             .as_ref()
             .ok_or(PeriodTariffError::MissingField("singleRate"))?;
 
-        let rates = block_rates(&single.rates);
+        let rates: Vec<(Decimal, Decimal)> = block_rates(&single.rates);
 
-        let consumption_period = Self::get_consumption_period(&rates, single.reset_period.as_ref());
+        let season = SeasonRange {
+            start_date: self.start_date,
+            end_date: self.end_date,
+        };
+        builder
+            .rate_period(season, |s| {
+                s.rates(&rates).time_band(START_OF_DAY, END_OF_DAY, None)
+            })
+            .map_err(PeriodTariffError::from)?;
 
-        let supply_rate = self.get_supply_rate()?;
-        TariffFactory::multiflat(&rates, supply_rate, consumption_period)
-            .map_err(PeriodTariffError::from)
+        Ok(())
     }
 
-    /// Creates a builder for a time-of-use tariff.
+    /// Creates touseason tariff rates
     ///
     /// # Errors
     ///
-    /// Returns [`PeriodTariffError`] if the tariff's time bands are invalid,
-    /// overlapping, or leave gaps in coverage.
-    pub fn time_of_use_builder(&self) -> Result<TariffBuilder, PeriodTariffError> {
+    /// Returns [`PeriodTariffError`] if the tariff's period definition is invalid
+    /// or inconsistent with a tou structure.
+    pub fn build_season_tou_rates(
+        &self,
+        builder: &mut TariffBuilder,
+    ) -> Result<(), PeriodTariffError> {
         let tou_rates: Vec<&TimeOfUseRates> = self
             .time_of_use_rates
             .as_ref()
@@ -161,7 +168,6 @@ impl PeriodTariff {
             .iter()
             .collect();
 
-        let mut builder = TariffBuilder::default();
         let starts = all_starts(&tou_rates);
         let season = SeasonRange {
             start_date: self.start_date,
@@ -174,32 +180,19 @@ impl PeriodTariff {
                     builder.add_rate_period(season, &blocks, tb);
                 }
             }
-            builder = builder.consumption_period(Self::get_consumption_period(
-                &blocks,
-                tou_period.reset_period.as_ref(),
-            ));
         }
-
-        builder = builder.daily_supply(self.get_supply_rate()?);
-
-        Ok(builder)
+        Ok(())
     }
 
     /// helper to parse consumption period
-    fn get_consumption_period(
-        rates: &[(Decimal, Decimal)],
-        reset_period: Option<&ResetPeriod>,
-    ) -> Option<ConsumptionPeriod> {
-        if rates.len() > 1 {
-            reset_period.as_ref().and_then(|p| match p {
-                ResetPeriod::Daily => Some(ConsumptionPeriod::Day),
-                ResetPeriod::Monthly => Some(ConsumptionPeriod::Month),
-                ResetPeriod::BiMonthly => Some(ConsumptionPeriod::BiMonthly),
-                ResetPeriod::Quarterly => Some(ConsumptionPeriod::Quarterly),
-                _ => None,
-            })
-        } else {
-            None
-        }
+    #[must_use]
+    pub fn get_consumption_period(reset_period: Option<&ResetPeriod>) -> Option<ConsumptionPeriod> {
+        reset_period.as_ref().and_then(|p| match p {
+            ResetPeriod::Daily => Some(ConsumptionPeriod::Day),
+            ResetPeriod::Monthly => Some(ConsumptionPeriod::Month),
+            ResetPeriod::BiMonthly => Some(ConsumptionPeriod::BiMonthly),
+            ResetPeriod::Quarterly => Some(ConsumptionPeriod::Quarterly),
+            _ => None,
+        })
     }
 }
