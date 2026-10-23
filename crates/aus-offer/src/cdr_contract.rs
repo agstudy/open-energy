@@ -3,7 +3,7 @@ use std::{
     hash::Hash,
 };
 
-use bill_pricer::tariff::{Tariff, TariffBuilder, TariffError};
+use bill_pricer::tariff::{ConsumptionPeriod, Tariff, TariffBuilder, TariffError};
 use domain::{
     hour_minute::{END_OF_DAY, START_OF_DAY},
     year_month::SeasonRange,
@@ -16,7 +16,7 @@ use crate::{
     cdr_domain::{TariffUType, TimeZone, all_starts, block_rates},
     cdr_eligibility::PlanEligibility,
     cdr_solar::{PayerType, SolarScheme, SolarTariff},
-    cdr_tariff::{PeriodTariff, PeriodTariffError, RateBlockUType},
+    cdr_tariff::{PeriodTariff, PeriodTariffError, RateBlockUType, get_consumption_period},
 };
 
 /// The pricing model for the contract. Contracts for gas must use `SINGLE_RATE`. Note that the detail for the enumeration values are:<ul><li>`SINGLE_RATE`: all energy usage is charged at a single unit rate no matter when it is consumed. Multiple unit rates may exist that correspond to varying volumes of usage i.e. a 'block' or 'step' tariff (first 50kWh @ X cents, next 50kWh at Y cents etc.)</li><li>`SINGLE_RATE_CONT_LOAD`: as above, but with an additional, separate unit rate charged for all energy usage from a controlled load i.e. separately metered appliance like hot water service, pool pump etc.</li><li>`TIME_OF_USE`: energy usage is charged at unit rates that vary dependent on time of day and day of week that the energy is consumed</li><li>`TIME_OF_USE_CONT_LOAD`: as above, but with an additional, separate unit rate charged for all energy usage from a controlled load i.e. separately metered appliance like hot water service, pool pump etc.</li><li>`FLEXIBLE`: energy usage is charged at unit rates that vary based on external factors</li><li>`FLEXIBLE_CONT_LOAD`: as above, but with an additional, separate unit rate charged for all energy usage from a controlled load i.e. separately metered appliance like hot water service, pool pump etc.</li><li>`QUOTA`: all energy usage is charged at a single fixed rate, up to a specified usage quota/allowance. All excess usage beyond the allowance is then charged at a single unit rate. i.e. $50/month for up to 150kWh included usage.</li></ul>
@@ -104,8 +104,6 @@ pub struct PlanContract {
 pub enum UnsupportedReason {
     #[error("pricing model")]
     Pricing(PricingModel),
-    #[error("Type not implemented")]
-    BlockType(RateBlockUType),
     #[error("Solar variante (multi choices) not supported")]
     SolarMultiOptions,
     #[error("Solar model not supported")]
@@ -145,8 +143,9 @@ impl PlanContract {
         }
 
         let supply_rate = self.aggregate_supply_rate()?;
-        // todo: add consumption period
-        let mut builder = TariffBuilder::default().daily_supply(supply_rate);
+        let mut builder = TariffBuilder::default()
+            .daily_supply(supply_rate)
+            .consumption_period(self.aggregate_comsuption_period()?);
 
         for period in &self.tariff_period {
             period.build_season(&mut builder)?;
@@ -165,7 +164,7 @@ impl PlanContract {
         }
     }
 
-    fn aggregate_supply_rate(&self) -> Result<Decimal, ParseContractError>{
+    fn aggregate_supply_rate(&self) -> Result<Decimal, ParseContractError> {
         let mut supply_set = HashSet::new();
         let mut supply_rate = Decimal::ZERO;
         for period in &self.tariff_period {
@@ -182,23 +181,19 @@ impl PlanContract {
         }
 
         Ok(supply_rate)
-
     }
 
-    fn aggregate_comsuption_period(&self) -> Result<Decimal, ParseContractError>{
-        let mut supply_set = HashSet::new();
-        let mut supply_rate = Decimal::ZERO;
+    //NOTE!  we override consumption period if ther are different
+    fn aggregate_comsuption_period(&self) -> Result<Option<ConsumptionPeriod>, ParseContractError> {
+        let mut period_cons: Option<ConsumptionPeriod> = None;
         for period in &self.tariff_period {
-            supply_rate = period.get?;
-            supply_set.insert(supply_rate);
-        }
-        if supply_set.len() != 1 {
-            let reason = UnsupportedReason::NotSingleSupplyRate(supply_set.len());
-            return Err(ParseContractError::Unsupported(reason));
+            if period.rate_block_u_type == RateBlockUType::SingleRates {
+                let single = period.get_single()?;
+                period_cons = get_consumption_period(single.reset_period.clone());
+            }
         }
 
-        Ok(supply_rate)
-
+        Ok(period_cons)
     }
 
     /// Builds one export [`Tariff`] per `(scheme, payer)` pair, combining all

@@ -131,10 +131,7 @@ impl PeriodTariff {
         &self,
         builder: &mut TariffBuilder,
     ) -> Result<(), PeriodTariffError> {
-        let single = self
-            .single_rate
-            .as_ref()
-            .ok_or(PeriodTariffError::MissingField("singleRate"))?;
+        let single = self.get_single()?;
 
         let rates: Vec<(Decimal, Decimal)> = block_rates(&single.rates);
 
@@ -184,15 +181,25 @@ impl PeriodTariff {
         Ok(())
     }
 
-    /// helper to parse consumption period
-    #[must_use]
-    pub fn get_consumption_period(reset_period: Option<&ResetPeriod>) -> Option<ConsumptionPeriod> {
-        reset_period.as_ref().and_then(|p| match p {
-            ResetPeriod::Daily => Some(ConsumptionPeriod::Day),
-            ResetPeriod::Monthly => Some(ConsumptionPeriod::Month),
-            ResetPeriod::BiMonthly => Some(ConsumptionPeriod::BiMonthly),
-            ResetPeriod::Quarterly => Some(ConsumptionPeriod::Quarterly),
-            _ => None,
-        })
+    /// Returns the single-rate payload for this feed-in entry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PeriodTariffError::MissingField`] if `singleTariff` is absent.
+    pub fn get_single(&self) -> Result<&SingleRates, PeriodTariffError> {
+        self.single_rate
+            .as_ref()
+            .ok_or(PeriodTariffError::MissingField("singleTariff"))
     }
+}
+/// helper to parse consumption period
+#[must_use]
+pub fn get_consumption_period(reset_period: Option<ResetPeriod>) -> Option<ConsumptionPeriod> {
+    reset_period.as_ref().and_then(|p| match p {
+        ResetPeriod::Daily => Some(ConsumptionPeriod::Day),
+        ResetPeriod::Monthly => Some(ConsumptionPeriod::Month),
+        ResetPeriod::BiMonthly => Some(ConsumptionPeriod::BiMonthly),
+        ResetPeriod::Quarterly => Some(ConsumptionPeriod::Quarterly),
+        _ => None,
+    })
 }

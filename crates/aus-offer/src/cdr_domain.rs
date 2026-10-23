@@ -184,7 +184,7 @@ pub struct SingleRates {
 }
 
 /// The type of usage that the rate applies to.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub enum ResetPeriod {
     #[serde(rename = "P1D", alias = "day")]
     Daily,
