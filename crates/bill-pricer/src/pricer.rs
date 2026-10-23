@@ -149,7 +149,6 @@ mod tests {
 
     #[test]
     pub fn test_period_resets() {
-
         // same day , daily
         assert!(!period_resets(
             ConsumptionPeriod::Day,
@@ -176,26 +175,24 @@ mod tests {
             str_to_native_date("2026-05-01")
         ));
         // no split , quarterly
-         assert!(!period_resets(
+        assert!(!period_resets(
             ConsumptionPeriod::Quarterly,
             Some(str_to_native_date("2026-04-01")),
             str_to_native_date("2026-06-30")
-         ));
-        
-         // exaclty split day, quartrely
+        ));
+
+        // exaclty split day, quartrely
         for period in [
             ConsumptionPeriod::Day,       // every day
-            ConsumptionPeriod::Month,     // every regular month 
+            ConsumptionPeriod::Month,     // every regular month
             ConsumptionPeriod::BiMonthly, //Mar 1 / May 1 / Jul 1 / Sep 1 / Nov 1 / Jan 1
-            ConsumptionPeriod::Quarterly //Apr 1 / Jul 1 / Oct 1 / Jan 1
+            ConsumptionPeriod::Quarterly, //Apr 1 / Jul 1 / Oct 1 / Jan 1
         ] {
-        assert!(period_resets(
-            period,
-            Some(str_to_native_date("2026-06-30")),
-            str_to_native_date("2026-07-01")
-         ));
-
+            assert!(period_resets(
+                period,
+                Some(str_to_native_date("2026-06-30")),
+                str_to_native_date("2026-07-01")
+            ));
         }
-
     }
 }

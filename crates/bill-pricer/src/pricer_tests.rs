@@ -1,7 +1,10 @@
 #[cfg(test)]
 mod tests {
 
-    use crate::{pricer::price, tariff::{ConsumptionPeriod, PricingError, Tariff}};
+    use crate::{
+        pricer::price,
+        tariff::{ConsumptionPeriod, PricingError, Tariff},
+    };
 
     use chrono::NaiveDate;
     use domain::meter::PricingInput;
